@@ -3,12 +3,13 @@ resolver = "2"
 members = ["thinkingdata", "thinkingdata-core"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/houseme/thinkingdata"
 keywords = ["thinkingdata", "analytics", "sdk", "tracking", "te"]
 categories = ["api-bindings"]
+readme = "README.md"
 
 # All dependencies are managed centrally here; member crates reference them
 # with `dep = { workspace = true }`.
@@ -27,7 +28,7 @@ serde_json = "1.0.154"
 thiserror = "2.0.21"
 # The version is required so the facade crate can be published to crates.io,
 # where the `path` specification is dropped.
-thinkingdata-core = { path = "thinkingdata-core", version = "0.1.0" }
+thinkingdata-core = { path = "thinkingdata-core", version = "0.1.1" }
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 url = "2.5.8"
 uuid = { version = "1.29.3", features = ["v4"] }

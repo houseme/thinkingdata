@@ -6,6 +6,29 @@ and `thinkingdata-core`) are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [Unreleased]
+
+## [0.1.1] - 2026-11-17
+
+### Fixed
+
+- Invalid dynamic super property callbacks (a non-object value) are now
+  reported through a warning log instead of being silently dropped on every
+  event.
+
+### Added
+
+- Per-crate `README.md` for both workspace members with `readme = "README.md"`
+  manifest entries, so the crates.io pages render crate-specific documentation
+  (the facade with installation and CLI usage; the core with its module map
+  and validation helpers).
+- `repository` metadata declared for both crates.
+
+### Changed
+
+- README badges point at the published `thinkingdata` crate, docs.rs and the
+  CI workflow; SDK examples restored to the canonical `)?;` form.
+
 
 ## [0.1.0] - 2026-11-17
 
