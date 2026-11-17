@@ -1,0 +1,235 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  # Daily catch-up with Rust toolchain regressions
+  schedule:
+    - cron: "17 03 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+# ── Build & Test ─────────────────────────────────────────────────────────────
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.features }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+        features: [ default, all, no-default-features, no-default-with-remote ]
+        include:
+          # Default features (`cli`) — builds the library and the binary.
+          - features: "default"
+            flags: ""
+          # All features — adds `remote` (ureq HTTP(S) download + loopback tests).
+          - features: "all"
+            flags: "--all-features"
+          # No default features — library only; mirrors the README build gate
+          # and guards the `cli` feature gate (R37).
+          - features: "no-default-features"
+            flags: "--no-default-features"
+          # No default features plus `remote` — `remote` implies `cli`, so
+          # this combination must still build the binary (R40/R43).
+          - features: "no-default-with-remote"
+            flags: "--no-default-features --features remote"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          # Keep feature-specific output checks independent of cached builds.
+          key: test-${{ matrix.features }}
+
+      - name: Build (lib + bin)
+        run: cargo build --locked ${{ matrix.flags }}
+
+      - name: Verify the binary and the library are both produced
+        if: matrix.os == 'ubuntu-latest' && matrix.features == 'default'
+        run: |
+          test -f target/debug/binlog-inspect || { echo "bin target missing"; exit 1; }
+          test -f target/debug/libbinlog_inspect.rlib || { echo "lib target missing"; exit 1; }
+          ./target/debug/binlog-inspect --version
+
+      - name: Verify the library-only build produces no binary
+        if: matrix.os == 'ubuntu-latest' && matrix.features == 'no-default-features'
+        run: test ! -e target/debug/binlog-inspect
+
+      - name: Verify remote-without-defaults still produces the binary
+        if: matrix.os == 'ubuntu-latest' && matrix.features == 'no-default-with-remote'
+        run: |
+          test -f target/debug/binlog-inspect || { echo "bin target missing"; exit 1; }
+          ./target/debug/binlog-inspect --version
+
+      - name: Test
+        run: cargo test --locked ${{ matrix.flags }}
+
+  # ── Functional smoke: parse → formatters → filters → layered exit codes ─────
+
+  smoke:
+    name: Functional smoke (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Build release
+        run: cargo build --locked --release
+
+      - name: Exercise the CLI end to end on a synthetic binlog
+        shell: bash
+        run: |
+          set -euo pipefail
+          BIN=./target/release/binlog-inspect
+
+          "$BIN" --version
+          "$BIN" --completions bash | grep -q binlog-inspect
+
+          # Synthetic binlog: 4-byte magic followed by one XID event
+          # (19-byte header + 8-byte body) — the same bytes as the library
+          # doctest in src/lib.rs.
+          BINLOG=$(mktemp)
+          printf '\376bin\001\000\000\000\020\007\000\000\000\033\000\000\000\037\000\000\000\000\000\052\000\000\000\000\000\000\000' > "$BINLOG"
+
+          # JSON Lines: one typed XID event (xid=42, server_id=7, log_pos=31).
+          "$BIN" "$BINLOG" | grep -q '"event_type":"xid"'
+          "$BIN" "$BINLOG" | grep -q '"xid":42'
+
+          # Text and CSV formatters.
+          "$BIN" "$BINLOG" --format text | grep -q 'xid server=7 pos=31'
+          "$BIN" "$BINLOG" --format csv > rows.csv
+          grep -q '^timestamp,event_type,database,table,before,after' rows.csv
+          test "$(wc -l < rows.csv)" -eq 1  # XID is not a row event: header only
+
+          # Filters: a valid but non-matching event type still exits 0.
+          test -z "$("$BIN" "$BINLOG" --events rotate)"
+
+          # Statistics.
+          "$BIN" "$BINLOG" --stats | grep -q '"events_total":1'
+
+          # Layered exit codes: 2 usage error, 1 hard error.
+          rc=0; "$BIN" "$BINLOG" --events bogus >/dev/null 2>&1 || rc=$?
+          test "$rc" -eq 2
+          rc=0; "$BIN" "$BINLOG" --table no_dot >/dev/null 2>&1 || rc=$?
+          test "$rc" -eq 2
+          rc=0; printf '' | "$BIN" - >/dev/null 2>&1 || rc=$?
+          test "$rc" -eq 1
+
+  # ── Lint: fmt + clippy quality gates ──────────────────────────────────────
+
+  lint:
+    name: Lint (fmt + clippy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Rustfmt
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features, all targets, -D warnings)
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Clippy (all features, all targets, -D warnings)
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Clippy (no default features, all targets, -D warnings)
+        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
+
+  # ── MSRV: the minimum toolchain the crate claims (rust-version) ─────────────
+
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@360a4e93673de6630fac2478bc9e35244b01a759 # 1.88.0
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: msrv
+
+      - name: Check (all features)
+        run: cargo check --locked --all-features
+
+      - name: Check (no default features)
+        run: cargo check --locked --no-default-features
+
+      - name: Test (all features)
+        run: cargo test --locked --all-features
+
+  # ── Documentation ───────────────────────────────────────────────────────────
+
+  doc:
+    name: Documentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+
+      - name: Check doc warnings
+        run: cargo doc --locked --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  # ── Cross-compilation (musl, static CLI binary) ─────────────────────────────
+
+  cross-musl:
+    name: Cross (x86_64-unknown-linux-musl)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: musl
+
+      - name: Install musl toolchain
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build (musl, static, default features)
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+
+      - name: Build (musl, static, all features incl. remote)
+        run: cargo build --locked --release --target x86_64-unknown-linux-musl --all-features
