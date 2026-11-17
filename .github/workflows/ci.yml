@@ -1,3 +1,17 @@
+# Copyright 2026 houseme
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: CI
 
 on:
@@ -20,6 +34,12 @@ env:
   RUST_BACKTRACE: 1
 
 # ── Build & Test ─────────────────────────────────────────────────────────────
+#
+# Feature matrix of the workspace:
+#   default            → `blocking` (sync API + CLI binary)
+#   all                → blocking + async
+#   no-default-features→ data model, logging and validation only
+#   async-only         → async API (streaming pipelines), no blocking facade
 
 jobs:
   test:
@@ -28,22 +48,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        features: [ default, all, no-default-features, no-default-with-remote ]
+        features: [ default, all, no-default-features, async-only ]
         include:
-          # Default features (`cli`) — builds the library and the binary.
           - features: "default"
             flags: ""
-          # All features — adds `remote` (ureq HTTP(S) download + loopback tests).
           - features: "all"
             flags: "--all-features"
-          # No default features — library only; mirrors the README build gate
-          # and guards the `cli` feature gate (R37).
           - features: "no-default-features"
             flags: "--no-default-features"
-          # No default features plus `remote` — `remote` implies `cli`, so
-          # this combination must still build the binary (R40/R43).
-          - features: "no-default-with-remote"
-            flags: "--no-default-features --features remote"
+          - features: "async-only"
+            flags: "--no-default-features --features thinkingdata-core/async,thinkingdata/async"
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
@@ -58,29 +72,27 @@ jobs:
           key: test-${{ matrix.features }}
 
       - name: Build (lib + bin)
-        run: cargo build --locked ${{ matrix.flags }}
+        run: cargo build --locked ${{ matrix.flags }} --workspace --all-targets
 
-      - name: Verify the binary and the library are both produced
+      - name: Verify the library and the CLI binary are both produced
         if: matrix.os == 'ubuntu-latest' && matrix.features == 'default'
         run: |
-          test -f target/debug/binlog-inspect || { echo "bin target missing"; exit 1; }
-          test -f target/debug/libbinlog_inspect.rlib || { echo "lib target missing"; exit 1; }
-          ./target/debug/binlog-inspect --version
+          test -f target/debug/thinkingdata || { echo "bin target missing"; exit 1; }
+          test -f target/debug/libthinkingdata_core.rlib || { echo "core lib target missing"; exit 1; }
+          ./target/debug/thinkingdata --version
 
       - name: Verify the library-only build produces no binary
         if: matrix.os == 'ubuntu-latest' && matrix.features == 'no-default-features'
-        run: test ! -e target/debug/binlog-inspect
+        run: test ! -e target/debug/thinkingdata
 
-      - name: Verify remote-without-defaults still produces the binary
-        if: matrix.os == 'ubuntu-latest' && matrix.features == 'no-default-with-remote'
-        run: |
-          test -f target/debug/binlog-inspect || { echo "bin target missing"; exit 1; }
-          ./target/debug/binlog-inspect --version
+      - name: Verify async-only still produces no binary (CLI requires blocking)
+        if: matrix.os == 'ubuntu-latest' && matrix.features == 'async-only'
+        run: test ! -e target/debug/thinkingdata
 
       - name: Test
-        run: cargo test --locked ${{ matrix.flags }}
+        run: cargo test --locked ${{ matrix.flags }} --workspace
 
-  # ── Functional smoke: parse → formatters → filters → layered exit codes ─────
+  # ── Functional smoke: CLI end to end against the log consumer ────────────────
 
   smoke:
     name: Functional smoke (${{ matrix.os }})
@@ -98,48 +110,41 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Build release
-        run: cargo build --locked --release
+        run: cargo build --locked --release -p thinkingdata --bins
 
-      - name: Exercise the CLI end to end on a synthetic binlog
+      - name: Exercise the CLI end to end
         shell: bash
         run: |
           set -euo pipefail
-          BIN=./target/release/binlog-inspect
+          BIN=./target/release/thinkingdata
 
           "$BIN" --version
-          "$BIN" --completions bash | grep -q binlog-inspect
 
-          # Synthetic binlog: 4-byte magic followed by one XID event
-          # (19-byte header + 8-byte body) — the same bytes as the library
-          # doctest in src/lib.rs.
-          BINLOG=$(mktemp)
-          printf '\376bin\001\000\000\000\020\007\000\000\000\033\000\000\000\037\000\000\000\000\000\052\000\000\000\000\000\000\000' > "$BINLOG"
+          # Track + user operations land as NDJSON lines in the log directory.
+          DIR=$(mktemp -d)
+          "$BIN" --log-dir "$DIR" track \
+            --account-id acc_1 --event-name purchase \
+            --properties '{"price": 9.9, "product_name": "book"}'
+          "$BIN" --log-dir "$DIR" user-set --account-id acc_1 --properties '{"vip": true}'
+          "$BIN" --log-dir "$DIR" track --distinct-id dev_9 --event-name anonymous_view
+          "$BIN" --log-dir "$DIR" track-first --account-id acc_1 \
+            --event-name register --first-check-id acc_1
 
-          # JSON Lines: one typed XID event (xid=42, server_id=7, log_pos=31).
-          "$BIN" "$BINLOG" | grep -q '"event_type":"xid"'
-          "$BIN" "$BINLOG" | grep -q '"xid":42'
+          FILE=$(find "$DIR" -type f -name 'log.*' | head -n1)
+          test -n "$FILE"
+          grep -q '"#type":"track"' "$FILE"
+          grep -q '"#event_name":"purchase"' "$FILE"
+          grep -q '"user_set"' "$FILE"
+          grep -q '"#first_check_id":"acc_1"' "$FILE"
+          grep -q '"#lib":"Rust"' "$FILE"
 
-          # Text and CSV formatters.
-          "$BIN" "$BINLOG" --format text | grep -q 'xid server=7 pos=31'
-          "$BIN" "$BINLOG" --format csv > rows.csv
-          grep -q '^timestamp,event_type,database,table,before,after' rows.csv
-          test "$(wc -l < rows.csv)" -eq 1  # XID is not a row event: header only
+          # Errors exit non-zero: missing consumer, missing IDs, empty keys.
+          rc=0; "$BIN" track --account-id acc_1 --event-name x >/dev/null 2>&1 || rc=$?
+          test "$rc" -ne 0
+          rc=0; "$BIN" --log-dir "$DIR" track --event-name x >/dev/null 2>&1 || rc=$?
+          test "$rc" -ne 0
 
-          # Filters: a valid but non-matching event type still exits 0.
-          test -z "$("$BIN" "$BINLOG" --events rotate)"
-
-          # Statistics.
-          "$BIN" "$BINLOG" --stats | grep -q '"events_total":1'
-
-          # Layered exit codes: 2 usage error, 1 hard error.
-          rc=0; "$BIN" "$BINLOG" --events bogus >/dev/null 2>&1 || rc=$?
-          test "$rc" -eq 2
-          rc=0; "$BIN" "$BINLOG" --table no_dot >/dev/null 2>&1 || rc=$?
-          test "$rc" -eq 2
-          rc=0; printf '' | "$BIN" - >/dev/null 2>&1 || rc=$?
-          test "$rc" -eq 1
-
-  # ── Lint: fmt + clippy quality gates ──────────────────────────────────────
+  # ── Lint: fmt + clippy quality gates across the feature matrix ───────────────
 
   lint:
     name: Lint (fmt + clippy)
@@ -158,37 +163,16 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy (default features, all targets, -D warnings)
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Clippy (all features, all targets, -D warnings)
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
       - name: Clippy (no default features, all targets, -D warnings)
-        run: cargo clippy --locked --all-targets --no-default-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --no-default-features -- -D warnings
 
-  # ── MSRV: the minimum toolchain the crate claims (rust-version) ─────────────
-
-  msrv:
-    name: MSRV (1.88)
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: dtolnay/rust-toolchain@360a4e93673de6630fac2478bc9e35244b01a759 # 1.88.0
-
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
-        with:
-          key: msrv
-
-      - name: Check (all features)
-        run: cargo check --locked --all-features
-
-      - name: Check (no default features)
-        run: cargo check --locked --no-default-features
-
-      - name: Test (all features)
-        run: cargo test --locked --all-features
+      - name: Clippy (async only, all targets, -D warnings)
+        run: cargo clippy --locked --workspace --all-targets --no-default-features --features thinkingdata-core/async,thinkingdata/async -- -D warnings
 
   # ── Documentation ───────────────────────────────────────────────────────────
 
@@ -204,7 +188,7 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Check doc warnings
-        run: cargo doc --locked --no-deps
+        run: cargo doc --locked --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -229,7 +213,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build (musl, static, default features)
-        run: cargo build --locked --release --target x86_64-unknown-linux-musl
+        run: cargo build --locked --release --workspace --target x86_64-unknown-linux-musl
 
-      - name: Build (musl, static, all features incl. remote)
-        run: cargo build --locked --release --target x86_64-unknown-linux-musl --all-features
+      - name: Build (musl, static, all features)
+        run: cargo build --locked --release --workspace --all-features --target x86_64-unknown-linux-musl

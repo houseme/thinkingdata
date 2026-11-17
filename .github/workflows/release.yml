@@ -1,3 +1,17 @@
+# Copyright 2026 houseme
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 name: Release
 
 on:
@@ -22,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: binlog-inspect-release
+  group: thinkingdata-release
   cancel-in-progress: false
 
 env:
@@ -49,7 +63,7 @@ jobs:
         id: source
         run: echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve version from Cargo.toml
+      - name: Resolve version from the workspace manifest
         id: version
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
@@ -58,18 +72,19 @@ jobs:
           RELEASE_DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
         run: |
           set -euo pipefail
+          # Dependency versions live in [workspace.package] of the root manifest.
           VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
-          test -n "$VERSION" || { echo "::error::Cargo.toml version not found"; exit 1; }
+          test -n "$VERSION" || { echo "::error::workspace Cargo.toml version not found"; exit 1; }
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           if [ "$RELEASE_EVENT" = "push" ]; then
             case "$RELEASE_REF" in
               "v$VERSION") ;;
-              *) echo "::error::tag $RELEASE_REF does not match Cargo.toml version $VERSION"; exit 1 ;;
+              *) echo "::error::tag $RELEASE_REF does not match workspace version $VERSION"; exit 1 ;;
             esac
           fi
           if [ -n "$REQUESTED_VERSION" ] && [ "$REQUESTED_VERSION" != "$VERSION" ]; then
-            echo "::error::requested version $REQUESTED_VERSION != Cargo.toml version $VERSION"; exit 1
+            echo "::error::requested version $REQUESTED_VERSION != workspace version $VERSION"; exit 1
           fi
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "is_dry_run=$RELEASE_DRY_RUN" >> "$GITHUB_OUTPUT"
@@ -77,33 +92,30 @@ jobs:
   # ── Full test gate ──────────────────────────────────────────────────────────
 
   test:
-    name: Test (${{ matrix.os }}, ${{ matrix.toolchain }})
+    name: Test (${{ matrix.os }})
     needs: prepare
     strategy:
       fail-fast: false
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        toolchain: [ stable ]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ needs.prepare.outputs.revision }}
-      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable (matrix passes "stable")
-        with:
-          toolchain: ${{ matrix.toolchain }}
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Build (default)
-        run: cargo build --locked
+        run: cargo build --locked --workspace
       - name: Test (default)
-        run: cargo test --locked
-      - name: Test (all features, incl. remote)
-        run: cargo test --locked --all-features
+        run: cargo test --locked --workspace
+      - name: Test (all features, blocking + async)
+        run: cargo test --locked --workspace --all-features
       - name: Build (no default features)
-        run: cargo build --locked --no-default-features
+        run: cargo build --locked --workspace --no-default-features
       - name: Build (release)
-        run: cargo build --locked --release
+        run: cargo build --locked --release --workspace
 
   # ── Lint gate ───────────────────────────────────────────────────────────────
 
@@ -123,13 +135,15 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --all -- --check
       - name: Clippy
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Documentation
-        run: cargo doc --locked --no-deps
+        run: cargo doc --locked --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      - name: Verify package archive
-        run: cargo package --locked --allow-dirty --no-verify
+      - name: Verify package archives (core, then facade)
+        run: |
+          cargo package --locked -p thinkingdata-core --allow-dirty --no-verify
+          cargo package --locked -p thinkingdata --allow-dirty --no-verify
 
   # ── Build platform binaries ─────────────────────────────────────────────────
 
@@ -161,22 +175,26 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Build
-        run: cargo build --locked --release --target ${{ matrix.target }}
+        run: cargo build --locked --release --workspace --target ${{ matrix.target }}
 
       - name: Strip binary
         if: matrix.strip == 'true'
-        run: strip target/${{ matrix.target }}/release/binlog-inspect
+        shell: bash
+        run: |
+          EXT=""
+          [ "${{ matrix.os }}" = "windows-latest" ] && EXT=".exe" || true
+          strip "target/${{ matrix.target }}/release/thinkingdata$EXT"
 
       - name: Prepare archive directory
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          STAGE="binlog-inspect-${VERSION}-${{ matrix.target }}"
+          STAGE="thinkingdata-${VERSION}-${{ matrix.target }}"
           mkdir -p "$STAGE"
           EXT=""
           [ "${{ matrix.os }}" = "windows-latest" ] && EXT=".exe" || true
-          cp "target/${{ matrix.target }}/release/binlog-inspect$EXT" "$STAGE/binlog-inspect$EXT"
+          cp "target/${{ matrix.target }}/release/thinkingdata$EXT" "$STAGE/thinkingdata$EXT"
           cp README.md LICENSE "$STAGE/"
           echo "stage=$STAGE" >> "$GITHUB_ENV"
 
@@ -186,22 +204,22 @@ jobs:
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
           # bsdtar on all runners infers the format from the extension (-a).
-          tar -a -cf "binlog-inspect-${VERSION}-${{ matrix.target }}.${{ matrix.archive }}" "$stage"
+          tar -a -cf "thinkingdata-${VERSION}-${{ matrix.target }}.${{ matrix.archive }}" "$stage"
 
       - name: Checksum
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${{ needs.prepare.outputs.version }}"
-          ARCHIVE="binlog-inspect-${VERSION}-${{ matrix.target }}.${{ matrix.archive }}"
+          ARCHIVE="thinkingdata-${VERSION}-${{ matrix.target }}.${{ matrix.archive }}"
           sha256sum "$ARCHIVE" > "$ARCHIVE.sha256"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: binlog-inspect-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
+          name: thinkingdata-${{ needs.prepare.outputs.version }}-${{ matrix.target }}
           path: |
-            binlog-inspect-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
-            binlog-inspect-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}.sha256
+            thinkingdata-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}
+            thinkingdata-${{ needs.prepare.outputs.version }}-${{ matrix.target }}.${{ matrix.archive }}.sha256
           retention-days: 14
 
   # ── Publish to crates.io ────────────────────────────────────────────────────
@@ -218,10 +236,20 @@ jobs:
           ref: ${{ needs.prepare.outputs.revision }}
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - name: Publish
+      # thinkingdata-core must be published before the facade crate that
+      # depends on it.
+      - name: Publish thinkingdata-core
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish --locked
+        run: cargo publish --locked -p thinkingdata-core
+
+      - name: Wait for the crates.io index to settle
+        run: sleep 30
+
+      - name: Publish thinkingdata (API + CLI)
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked -p thinkingdata
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
 
@@ -246,9 +274,9 @@ jobs:
         run: |
           set -euo pipefail
           cat > /tmp/release-notes.md <<'HEADER'
-          ## binlog-inspect v${RELEASE_VERSION}
+          ## thinkingdata v${RELEASE_VERSION}
 
-          Offline inspector for plaintext MySQL binary logs with JSON Lines, text and CSV output.
+          Rust SDK and CLI for ThinkingData Analytics: blocking & async APIs, log/batch/debug consumers.
 
           ### Downloads
           HEADER
@@ -260,14 +288,16 @@ jobs:
 
           ### Verify
           ```bash
-          sha256sum -c binlog-inspect-${RELEASE_VERSION}-<target>.tar.gz.sha256
+          sha256sum -c thinkingdata-${RELEASE_VERSION}-<target>.tar.gz.sha256
           ```
 
           ### Quick start
           ```bash
-          ./binlog-inspect mysql-bin.000001 --events query,xid --format text
-          ./binlog-inspect mysql-bin.000001 --table app.orders --format csv --output rows.csv
-          ./binlog-inspect mysql-bin.000001 --stats
+          ./thinkingdata --log-dir ./ta-logs track \
+            --account-id acc_1 --event-name purchase \
+            --properties '{"price": 9.9}'
+          ./thinkingdata --server-url https://receiver.thinkingdata.io --app-id YOUR_APP_ID \
+            user-set --account-id acc_1 --properties '{"vip": true}'
           ```
           FOOTER
           # Expand the two variables inside the heredocs.
