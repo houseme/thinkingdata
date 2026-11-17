@@ -58,8 +58,8 @@ thinkingdata = { version = "0.1", features = ["blocking"] }  # default
 ```rust
 use thinkingdata::{TDAnalytics, consumer::LogConsumer};
 
-let consumer = LogConsumer::new("/path/to/log/directory") ?;
-let ta = TDAnalytics::new(consumer) ?;
+let consumer = LogConsumer::new("/path/to/log/directory")?;
+let ta = TDAnalytics::new(consumer)?;
 ```
 
 The Go SDK uses `NewTDAnalytics(consumer)` with a consumer argument; this Rust port follows the same shape: the consumer
@@ -74,7 +74,7 @@ let mut properties = HashMap::new();
 properties.insert("product_name".to_string(), "Rust SDK".into());
 properties.insert("price".to_string(), 99.0.into());
 
-ta.track("account_id_123", "purchase", properties) ?;
+ta.track("account_id_123", "purchase", properties)?;
 ```
 
 The `track` method mirrors the Go SDK's `Track` API; `serde_json::json!({...})` literals and `HashMap`s are both
@@ -88,7 +88,7 @@ let mut user_props = HashMap::new();
 user_props.insert("level".to_string(), 10.into());
 user_props.insert("vip".to_string(), true.into());
 
-ta.user_set("account_id_123", user_props) ?;
+ta.user_set("account_id_123", user_props)?;
 ```
 
 `user_set` corresponds to the Go SDK's `UserSet` method for general user-property assignment.
@@ -99,7 +99,7 @@ ta.user_set("account_id_123", user_props) ?;
 let mut super_props = HashMap::new();
 super_props.insert("channel".to_string(), "rust".into());
 
-ta.set_super_properties(super_props) ?;
+ta.set_super_properties(super_props)?;
 ```
 
 Super properties are applied automatically to every subsequent event, matching the behavior of `SetSuperProperties` in
@@ -108,7 +108,7 @@ the Go SDK.
 ### Close the SDK
 
 ```rust
-ta.close() ?;
+ta.close()?;
 ```
 
 `close` flushes any buffered data and shuts down the consumer gracefully. This is the Rust counterpart of the Go SDK's
@@ -183,7 +183,7 @@ Writes events to a local log file for later ingestion via LogBus or another tran
 `TDLogConsumer` in the Go SDK.
 
 ```rust
-let consumer = LogConsumer::new("/var/log/thinkingdata") ?;
+let consumer = LogConsumer::new("/var/log/thinkingdata")?;
 ```
 
 Files rotate by day (or hour, via `RotateMode::Hourly`) and are paged with `_N` suffixes when `file_size_mb` is set; the
@@ -198,7 +198,7 @@ Go SDK.
 let consumer = BatchConsumer::new(
 "https://receiver.thinkingdata.io",
 "your_app_id",
-) ?;
+)?;
 ```
 
 Requests are gzip-compressed by default, retried up to three times on non-200 responses, and undelivered batches stay in
@@ -211,7 +211,7 @@ Reports events one by one and validates them against a receiver endpoint, useful
 global log level to `Debug`.
 
 ```rust
-let consumer = DebugConsumer::new("https://receiver.thinkingdata.io", "your_app_id", true) ?;
+let consumer = DebugConsumer::new("https://receiver.thinkingdata.io", "your_app_id", true)?;
 ```
 
 ---
