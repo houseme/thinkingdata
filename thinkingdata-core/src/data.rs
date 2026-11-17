@@ -175,24 +175,25 @@ impl Serialize for DataType {
 /// including `serde_json::json!({...})` literals, which must be JSON objects:
 ///
 /// ```
-/// use std::collections::HashMap;
-/// use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
+/// # use std::collections::HashMap;
+/// # use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
 ///
+/// # #[cfg(feature = "blocking")]
 /// # fn main() -> Result<(), thinkingdata_core::TDError> {
 /// # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-props");
-/// let consumer = LogConsumer::new(dir.to_str().unwrap())?;
-/// let ta = TDAnalytics::new(consumer)?;
+/// # let consumer = LogConsumer::new(dir.to_str().unwrap())?;
+/// # let ta = TDAnalytics::new(consumer)?;
 ///
-/// // A HashMap of serde_json values…
-/// let mut properties = HashMap::new();
-/// properties.insert("product_name".to_string(), "Rust SDK".into());
-/// properties.insert("price".to_string(), 99.0.into());
-/// ta.track("account_id_123", "purchase", properties)?;
+/// # // A HashMap of serde_json values…
+/// # let mut properties = HashMap::new();
+/// # properties.insert("product_name".to_string(), "Rust SDK".into());
+/// # properties.insert("price".to_string(), 99.0.into());
+/// # ta.track("account_id_123", "purchase", properties)?;
 ///
-/// // …or a json! literal.
-/// ta.user_set("account_id_123", serde_json::json!({ "level": 10 }))?;
+/// # // …or a json! literal.
+/// # ta.user_set("account_id_123", serde_json::json!({ "level": 10 }))?;
 ///
-/// ta.close()?;
+/// # ta.close()?;
 /// # Ok(())
 /// # }
 /// ```

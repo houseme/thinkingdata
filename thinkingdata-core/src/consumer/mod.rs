@@ -24,24 +24,25 @@
 //! # Choosing an API style
 //!
 //! ```no_run
-//! use thinkingdata_core::consumer::{BatchConsumer, Consumer};
+//! # use thinkingdata_core::consumer::{BatchConsumer, Consumer};
 //!
-//! // Blocking (feature `blocking`): returns immediately after the request.
+//! # // Blocking (feature `blocking`): returns immediately after the request.
+//! # #[cfg(feature = "blocking")]
 //! # fn demo() -> Result<(), thinkingdata_core::TDError> {
-//! let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
-//! consumer.flush()?;
-//! consumer.close()?;
+//! # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
+//! # consumer.flush()?;
+//! # consumer.close()?;
 //! # Ok(())
 //! # }
 //!
-//! // Async (feature `async`): awaits the delivery result.
+//! # // Async (feature `async`): awaits the delivery result.
 //! # #[cfg(feature = "async")]
 //! # async fn demo_async() -> Result<(), thinkingdata_core::TDError> {
-//! use thinkingdata_core::consumer::AsyncConsumer;
+//! # use thinkingdata_core::consumer::AsyncConsumer;
 //!
-//! let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
-//! consumer.flush_async().await?;
-//! consumer.close_async().await?;
+//! # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
+//! # consumer.flush_async().await?;
+//! # consumer.close_async().await?;
 //! # Ok(())
 //! # }
 //! ```

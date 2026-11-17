@@ -22,20 +22,22 @@
 //! `add_async`).
 //!
 //! ```
-//! use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
-//!
+//! # #[cfg(feature = "blocking")]
 //! # fn main() -> Result<(), thinkingdata_core::TDError> {
+//! # use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
+//!
 //! # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-analytics");
-//! let consumer = LogConsumer::new(dir.to_str().unwrap())?;
-//! let ta = TDAnalytics::new(consumer)?;
+//! # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-analytics");
+//! # let consumer = LogConsumer::new(dir.to_str().unwrap())?;
+//! # let ta = TDAnalytics::new(consumer)?;
 //!
-//! // Super properties are applied to every subsequent event…
-//! ta.set_super_properties(serde_json::json!({ "channel": "rust" }))?;
+//! # // Super properties are applied to every subsequent event…
+//! # ta.set_super_properties(serde_json::json!({ "channel": "rust" }))?;
 //!
-//! ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 }))?;
-//! ta.user_set("account_id_123", serde_json::json!({ "vip": true }))?;
+//! # ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 }))?;
+//! # ta.user_set("account_id_123", serde_json::json!({ "vip": true }))?;
 //!
-//! ta.close()?;
+//! # ta.close()?;
 //! # Ok(())
 //! # }
 //! ```
@@ -643,14 +645,14 @@ impl TDAnalytics {
 /// ```
 /// # #[cfg(feature = "async")]
 /// # async fn demo() -> Result<(), thinkingdata_core::TDError> {
-/// use thinkingdata_core::{TDAnalyticsAsync, consumer::BatchConsumer};
+/// # use thinkingdata_core::{TDAnalyticsAsync, consumer::BatchConsumer};
 ///
-/// let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "your_app_id")?;
-/// let ta = TDAnalyticsAsync::new(consumer)?;
+/// # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "your_app_id")?;
+/// # let ta = TDAnalyticsAsync::new(consumer)?;
 ///
-/// ta.set_super_properties(serde_json::json!({ "channel": "rust" }))?;
-/// ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 })).await?;
-/// ta.close().await?;
+/// # ta.set_super_properties(serde_json::json!({ "channel": "rust" }))?;
+/// # ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 })).await?;
+/// # ta.close().await?;
 /// # Ok(())
 /// # }
 /// ```

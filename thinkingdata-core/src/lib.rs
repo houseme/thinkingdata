@@ -40,18 +40,19 @@
 //! # Quick start (blocking)
 //!
 //! ```no_run
-//! use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
+//! # #[cfg(feature = "blocking")]
+//! # fn quickstart() -> Result<(), thinkingdata_core::TDError> {
+//! # use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
 //!
-//! # fn main() -> Result<(), thinkingdata_core::TDError> {
-//! let consumer = LogConsumer::new("/var/log/thinkingdata")?;
-//! let ta = TDAnalytics::new(consumer)?;
+//! # let consumer = LogConsumer::new("/var/log/thinkingdata")?;
+//! # let ta = TDAnalytics::new(consumer)?;
 //!
-//! ta.track("account_id_123", "purchase", serde_json::json!({
-//!     "product_name": "Rust SDK",
-//!     "price": 99.0,
-//! }))?;
+//! # ta.track("account_id_123", "purchase", serde_json::json!({
+//! #     "product_name": "Rust SDK",
+//! #     "price": 99.0,
+//! # }))?;
 //!
-//! ta.close()?;
+//! # ta.close()?;
 //! # Ok(())
 //! # }
 //! ```
@@ -61,14 +62,14 @@
 //! ```no_run
 //! # #[cfg(feature = "async")]
 //! # async fn demo() -> Result<(), thinkingdata_core::TDError> {
-//! use thinkingdata_core::{TDAnalyticsAsync, consumer::BatchConsumer};
+//! # use thinkingdata_core::{TDAnalyticsAsync, consumer::BatchConsumer};
 //!
-//! let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "your_app_id")?;
-//! let ta = TDAnalyticsAsync::new(consumer)?;
+//! # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "your_app_id")?;
+//! # let ta = TDAnalyticsAsync::new(consumer)?;
 //!
-//! ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 })).await?;
+//! # ta.track("account_id_123", "purchase", serde_json::json!({ "price": 99.0 })).await?;
 //!
-//! ta.close().await?;
+//! # ta.close().await?;
 //! # Ok(())
 //! # }
 //! ```

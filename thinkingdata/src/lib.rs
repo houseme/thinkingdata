@@ -31,18 +31,19 @@
 //! # Quick start
 //!
 //! ```no_run
-//! use thinkingdata::{TDAnalytics, consumer::LogConsumer};
+//! # #[cfg(feature = "blocking")]
+//! # fn quickstart() -> Result<(), thinkingdata::TDError> {
+//! # use thinkingdata::{TDAnalytics, consumer::LogConsumer};
 //!
-//! # fn main() -> Result<(), thinkingdata::TDError> {
-//! let consumer = LogConsumer::new("/path/to/log/directory")?;
-//! let ta = TDAnalytics::new(consumer)?;
+//! # let consumer = LogConsumer::new("/path/to/log/directory")?;
+//! # let ta = TDAnalytics::new(consumer)?;
 //!
-//! let mut properties = std::collections::HashMap::new();
-//! properties.insert("product_name".to_string(), "Rust SDK".into());
-//! properties.insert("price".to_string(), 99.0.into());
-//! ta.track("account_id_123", "purchase", properties)?;
+//! # let mut properties = std::collections::HashMap::new();
+//! # properties.insert("product_name".to_string(), "Rust SDK".into());
+//! # properties.insert("price".to_string(), 99.0.into());
+//! # ta.track("account_id_123", "purchase", properties)?;
 //!
-//! ta.close()?;
+//! # ta.close()?;
 //! # Ok(())
 //! # }
 //! ```

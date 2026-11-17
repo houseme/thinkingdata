@@ -134,11 +134,12 @@ struct WriterState {
 /// process never overwrites existing data.
 ///
 /// ```
-/// use thinkingdata_core::consumer::{Consumer, LogConsumer};
+/// # use thinkingdata_core::consumer::{Consumer, LogConsumer};
 ///
+/// # #[cfg(feature = "blocking")]
 /// # fn main() -> Result<(), thinkingdata_core::TDError> {
-/// let consumer = LogConsumer::new("/tmp/thinkingdata-logs")?;
-/// consumer.close()?;
+/// # let consumer = LogConsumer::new("/tmp/thinkingdata-logs")?;
+/// # consumer.close()?;
 /// # Ok(())
 /// # }
 /// ```
