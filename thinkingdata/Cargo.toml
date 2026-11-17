@@ -17,6 +17,7 @@ name = "thinkingdata"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 keywords.workspace = true
 categories.workspace = true
 description = "Rust SDK for ThinkingData Analytics (TE): API entry (blocking & async) plus the `thinkingdata` CLI. Functional logic lives in thinkingdata-core."

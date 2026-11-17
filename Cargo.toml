@@ -6,6 +6,7 @@ members = ["thinkingdata", "thinkingdata-core"]
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
+repository = "https://github.com/houseme/thinkingdata"
 keywords = ["thinkingdata", "analytics", "sdk", "tracking", "te"]
 categories = ["api-bindings"]
 
@@ -24,7 +25,9 @@ reqwest = { version = "0.13.5", features = ["form"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 thiserror = "2.0.21"
-thinkingdata-core = { path = "thinkingdata-core" }
+# The version is required so the facade crate can be published to crates.io,
+# where the `path` specification is dropped.
+thinkingdata-core = { path = "thinkingdata-core", version = "0.1.0" }
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
 url = "2.5.8"
 uuid = { version = "1.29.3", features = ["v4"] }

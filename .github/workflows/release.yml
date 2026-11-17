@@ -140,10 +140,11 @@ jobs:
         run: cargo doc --locked --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
-      - name: Verify package archives (core, then facade)
-        run: |
-          cargo package --locked -p thinkingdata-core --allow-dirty --no-verify
-          cargo package --locked -p thinkingdata --allow-dirty --no-verify
+      - name: Verify the core package archive
+        run: cargo package --locked -p thinkingdata-core --allow-dirty --no-verify
+      # The facade cannot be packaged before `thinkingdata-core` exists on
+      # crates.io (dependency resolution needs it), so its archive and build
+      # are verified by the publish job itself.
 
   # ── Build platform binaries ─────────────────────────────────────────────────
 
@@ -252,11 +253,19 @@ jobs:
         run: cargo publish --locked -p thinkingdata
 
   # ── GitHub Release ──────────────────────────────────────────────────────────
+  # Deliberately independent of `publish`: a missing or expired
+  # CARGO_REGISTRY_TOKEN must not withhold the platform binaries and release
+  # notes; crates.io publishing can be retried via workflow_dispatch.
 
   github-release:
     name: GitHub Release
-    needs: [ prepare, build-binaries, publish ]
-    if: needs.prepare.outputs.is_dry_run != 'true'
+    needs: [ prepare, test, lint, build-binaries ]
+    if: >-
+      !cancelled() &&
+      needs.prepare.outputs.is_dry_run != 'true' &&
+      needs.test.result == 'success' &&
+      needs.lint.result == 'success' &&
+      needs.build-binaries.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
