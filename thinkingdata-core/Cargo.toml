@@ -18,6 +18,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+readme = "README.md"
 keywords.workspace = true
 categories.workspace = true
 description = "Core implementation of the ThinkingData Analytics Rust SDK: data model, validation, and log/batch/debug consumers with blocking and async APIs."
