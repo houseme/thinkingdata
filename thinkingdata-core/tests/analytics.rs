@@ -133,6 +133,21 @@ fn dynamic_super_properties_snapshot_is_taken_outside_the_lock() {
 }
 
 #[test]
+fn dynamic_super_properties_invalid_value_falls_back_to_empty() {
+    let consumer = RecordingConsumer::new(false);
+    let ta = TDAnalytics::new(consumer.clone()).unwrap();
+
+    // A callback returning a non-object Value cannot become properties; the
+    // SDK logs a warning and continues with an empty dynamic map.
+    ta.set_dynamic_super_properties(|| serde_json::json!("not-an-object"));
+    assert!(ta.dynamic_super_properties().is_empty());
+
+    ta.track("acc", "event", serde_json::json!({})).unwrap();
+    let properties = &consumer.snapshot()[0].properties;
+    assert!(!properties.contains_key("dynamic"));
+}
+
+#[test]
 fn clones_share_consumer_and_super_properties() {
     let consumer = RecordingConsumer::new(false);
     let ta = TDAnalytics::new(consumer.clone()).unwrap();

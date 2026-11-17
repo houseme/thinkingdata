@@ -19,8 +19,6 @@
 //! three consumers, selected with `--log-dir`, `--server-url` (+`--app-id`)
 //! or `--debug`.
 
-use std::collections::HashMap;
-
 use clap::{Parser, Subcommand};
 use serde_json::{Map, Value};
 
@@ -428,15 +426,6 @@ fn user_op(
     op(ta, account, distinct, properties)
 }
 
-/// Quiet-mode helper for tests/examples: build a property map from pairs.
-#[allow(dead_code)]
-pub(crate) fn properties_from_pairs(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
-    pairs
-        .iter()
-        .map(|(key, value)| (key.to_string(), value.clone()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,11 +502,5 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(args.keys, vec!["k1", "k2 ", " k3"]);
-    }
-
-    #[test]
-    fn properties_from_pairs_helper() {
-        let map = properties_from_pairs(&[("a", Value::from(1))]);
-        assert_eq!(map.len(), 1);
     }
 }

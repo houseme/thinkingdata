@@ -247,7 +247,13 @@ impl TDAnalytics {
         F: Fn() -> P + Send + Sync + 'static,
         P: IntoPropertyMap,
     {
-        let action = Arc::new(move || action().into_property_map().unwrap_or_default());
+        let action = Arc::new(move || match action().into_property_map() {
+            Ok(map) => map,
+            Err(err) => {
+                crate::log::td_log_warning(&format!("dynamic super properties ignored: {err}"));
+                Map::new()
+            }
+        });
         *self
             .super_properties
             .dynamic_props
@@ -705,7 +711,13 @@ impl TDAnalyticsAsync {
         F: Fn() -> P + Send + Sync + 'static,
         P: IntoPropertyMap,
     {
-        let action = Arc::new(move || action().into_property_map().unwrap_or_default());
+        let action = Arc::new(move || match action().into_property_map() {
+            Ok(map) => map,
+            Err(err) => {
+                crate::log::td_log_warning(&format!("dynamic super properties ignored: {err}"));
+                Map::new()
+            }
+        });
         *self
             .super_properties
             .dynamic_props
