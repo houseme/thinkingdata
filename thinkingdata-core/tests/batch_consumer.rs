@@ -216,3 +216,37 @@ fn invalid_server_url_is_rejected() {
     let err = BatchConsumer::new("not a url", "app").unwrap_err();
     assert!(matches!(err, TDError::InvalidServerUrl(_)), "{err}");
 }
+
+#[test]
+fn cache_eviction_keeps_the_newest_batches() {
+    let server = MockServer::start();
+    let consumer = BatchConsumer::with_config(BatchConsumerConfig {
+        server_url: server.url.clone(),
+        app_id: "evict".to_string(),
+        batch_size: 1,
+        cache_capacity: 1,
+        compress: false,
+        ..BatchConsumerConfig::default()
+    })
+    .unwrap();
+
+    // Both batches fail to deliver; the capacity-1 cache keeps only the newest.
+    server.script_many(6, 500, "{}");
+    let _ = consumer.add(&event("old"));
+    let _ = consumer.add(&event("new"));
+    server.wait_requests(6);
+
+    consumer.close().unwrap();
+    server.wait_requests(7);
+
+    let requests = server.requests();
+    assert_eq!(requests.len(), 7);
+    // The first six attempts all carried the "old" batch…
+    for request in &requests[..6] {
+        let body: serde_json::Value = serde_json::from_str(&request.body_string()).unwrap();
+        assert_eq!(body[0]["properties"]["marker"], "old");
+    }
+    // …and the close-time delivery carries the surviving "new" batch.
+    let last: serde_json::Value = serde_json::from_str(&requests[6].body_string()).unwrap();
+    assert_eq!(last[0]["properties"]["marker"], "new");
+}

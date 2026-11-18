@@ -29,7 +29,7 @@ use tokio::sync::{mpsc, oneshot};
 
 use crate::data::Data;
 use crate::error::{Result, TDError};
-use crate::log::td_log_info;
+use crate::log::{td_log_error, td_log_info};
 use crate::utils::parse_time;
 
 /// Event count threshold for triggering a flush.
@@ -416,9 +416,17 @@ async fn flush_batches(inner: &Arc<Inner>, all: bool, closing: bool) -> Result<(
     for batch in retained.into_iter().rev() {
         queue.cache.push_front(batch);
     }
-    // Keep only the newest `cache_capacity` batches.
-    while queue.cache.len() > inner.cache_capacity {
-        queue.cache.pop_front();
+    // Keep only the newest `cache_capacity` batches; say so when data is
+    // dropped, mirroring the Go SDK's discard logging.
+    if queue.cache.len() > inner.cache_capacity {
+        let dropped = queue.cache.len() - inner.cache_capacity;
+        td_log_error(&format!(
+            "cache is full, discard {dropped} batch(es) and keep the newest {}",
+            inner.cache_capacity
+        ));
+        while queue.cache.len() > inner.cache_capacity {
+            queue.cache.pop_front();
+        }
     }
     first_err.map_or(Ok(()), Err)
 }
