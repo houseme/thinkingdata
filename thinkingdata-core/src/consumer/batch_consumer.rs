@@ -290,7 +290,16 @@ impl BatchConsumer {
                 respond: respond_tx,
             })
             .map_err(|_| TDError::ConsumerClosed)?;
-        respond_rx.await.map_err(|_| TDError::ConsumerClosed)?
+        match respond_rx.await {
+            Ok(result) => result,
+            // A concurrent `close` won the race and shut the sender task down
+            // before this request was served. The enqueued data was part of
+            // the close-time delivery, so its retained result is the answer.
+            Err(_) => match self.inner.close_result.get() {
+                Some(result) => result.clone(),
+                None => Err(TDError::ConsumerClosed),
+            },
+        }
     }
 
     /// Deliver every currently pending batch.
@@ -312,7 +321,15 @@ impl BatchConsumer {
                 respond: respond_tx,
             })
             .map_err(|_| TDError::ConsumerClosed)?;
-        let result = respond_rx.await.map_err(|_| TDError::ConsumerClosed)?;
+        let result = match respond_rx.await {
+            Ok(result) => result,
+            // A concurrent `close` won the race and shut the sender task down
+            // before this request was served; report its retained result.
+            Err(_) => match self.inner.close_result.get() {
+                Some(result) => result.clone(),
+                None => Err(TDError::ConsumerClosed),
+            },
+        };
         let _ = self.inner.close_result.set(result.clone());
         result
     }

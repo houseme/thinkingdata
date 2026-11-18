@@ -256,9 +256,16 @@ impl LogConsumer {
         self.tx
             .send(LogCommand::Write { line, ack: ack_tx })
             .map_err(|_| TDError::msg("add event failed, SDK has been closed"))?;
-        ack_rx
-            .await
-            .map_err(|_| TDError::msg("log writer task terminated"))?
+        match ack_rx.await {
+            Ok(result) => result,
+            // The writer task exited while this command was queued. If a
+            // concurrent `close` won the race, the event was not delivered
+            // because the consumer closed; otherwise the task is gone.
+            Err(_) if self.shared.close_result.get().is_some() => {
+                Err(TDError::msg("add event failed, SDK has been closed"))
+            }
+            Err(_) => Err(TDError::msg("log writer task terminated")),
+        }
     }
 
     /// Sync the current file to disk and return the first retained error.
@@ -271,9 +278,15 @@ impl LogConsumer {
                 None => Err(TDError::msg("log consumer has been closed")),
             };
         }
-        ack_rx
-            .await
-            .map_err(|_| TDError::msg("log writer task terminated"))?
+        match ack_rx.await {
+            Ok(result) => result,
+            // A concurrent `close` won the race and terminated the writer task
+            // before this command was served; report its retained result.
+            Err(_) => match self.shared.close_result.get() {
+                Some(result) => result.clone(),
+                None => Err(TDError::msg("log writer task terminated")),
+            },
+        }
     }
 
     /// Stop accepting events, sync and close the current file, and return the
@@ -289,9 +302,15 @@ impl LogConsumer {
                 None => Err(TDError::msg("log consumer has been closed")),
             };
         }
-        ack_rx
-            .await
-            .map_err(|_| TDError::msg("log writer task terminated"))?
+        match ack_rx.await {
+            Ok(result) => result,
+            // A concurrent `close` won the race and terminated the writer task
+            // before this command was served; report its retained result.
+            Err(_) => match self.shared.close_result.get() {
+                Some(result) => result.clone(),
+                None => Err(TDError::msg("log writer task terminated")),
+            },
+        }
     }
 }
 
