@@ -6,7 +6,45 @@ and `thinkingdata-core`) are documented here. The format follows
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## [Unreleased]
+
+### Fixed
+
+- `thinkingdata-core` did not compile with crate-level feature combinations:
+  `--no-default-features` (missing `Runtime`) and
+  `--no-default-features --features async` (missing `Arc`/`Runtime`). The
+  analytics and consumer modules are now compiled out entirely when no API
+  feature is enabled (keeping the data model, validation and logging), and the
+  workspace CI matrix gained dedicated crate-level jobs and clippy gates so
+  the gap cannot reopen.
+- RFC 3339 timestamps without fractional seconds (`2024-01-02T03:04:05Z`) are
+  now rewritten to `yyyy-MM-dd HH:mm:ss.SSS` like every other form: `parse_time`
+  pads the fraction to `.000`, pads sub-100ms fractions to three digits, and
+  truncates longer fractions. This makes the CLI `--time` option reliable for
+  RFC 3339 input.
+- `thinkingdata --keys` trims whitespace around comma-separated keys (and skips
+  empty items), so `--keys level, vip` no longer sends keys the receiver
+  silently drops.
+- Concurrent `close` calls on `LogConsumer`/`BatchConsumer` now all report the
+  retained close result instead of a transient writer/sender error.
+- The per-crate `README.md` packaging of 0.1.1 is restored: both crates resolve
+  `readme = "README.md"` relative to their own directory again, so crates.io
+  pages show the crate-specific documentation instead of the workspace root
+  README. The duplicated `## [Unreleased]` heading was removed.
+- The TLS supply-chain note now matches the lockfile: rustls backed by
+  aws-lc-rs is the only TLS backend, while `ring` and `openssl-probe` remain
+  present as unused transitive dependencies (via quinn / rustls-native-certs).
+
+### Changed
+
+- Removed the `flush` and `close` CLI subcommands: every invocation builds a
+  fresh consumer, so they had no observable effect. Every command now flushes
+  and closes the consumer before exiting.
+- Batch failure-cache eviction is logged (`cache is full, discard N batch(es)`)
+  instead of dropping the oldest batches silently.
+- `LogConsumer` moves each event line into the blocking writer task instead of
+  cloning it; the analytics facades consume the per-event super-property
+  snapshots by value; the batch consumer gzip-encodes the request body once
+  and reuses it across retry attempts.
 
 ## [0.1.1] - 2026-11-17
 

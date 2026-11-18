@@ -60,8 +60,10 @@ and [preset properties](https://github.com/houseme/thinkingdata/blob/main/docs/p
 ## Notes
 
 - Timestamps are produced with `jiff`; `chrono` is intentionally not used.
-- TLS: rustls with the **aws-lc-rs** provider only (reqwest 0.13 defaults).
-- 89 tests including mock-receiver integration tests for every consumer.
+- TLS: rustls with the **aws-lc-rs** provider as the only TLS backend (reqwest 0.13 defaults); no
+  native-tls/openssl backend is compiled in.
+- Unit tests plus mock-receiver integration tests cover every consumer, the analytics facades and
+  the crate-level feature combinations.
 
 ## License
 
