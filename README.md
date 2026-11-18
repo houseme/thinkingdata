@@ -44,9 +44,9 @@ Add the facade crate to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-thinkingdata = { version = "0.1", features = ["blocking"] }  # default
-# thinkingdata = { version = "0.1", features = ["async"] }   # async API
-# thinkingdata = { version = "0.1", features = ["full"] }    # both
+thinkingdata = { version = "0.2", features = ["blocking"] }  # default
+# thinkingdata = { version = "0.2", features = ["async"] }   # async API
+# thinkingdata = { version = "0.2", features = ["full"] }    # both
 ```
 
 ---

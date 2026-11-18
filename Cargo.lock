@@ -1464,7 +1464,7 @@ dependencies = [
 
 [[package]]
 name = "thinkingdata"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap",
  "serde_json",
@@ -1473,7 +1473,7 @@ dependencies = [
 
 [[package]]
 name = "thinkingdata-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "flate2",
