@@ -29,9 +29,11 @@ const CLOCK_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 /// The timestamp rewrite applied to serialized payloads, ported from the Go
 /// SDK: RFC 3339 timestamps embedded anywhere in a JSON payload are rewritten
-/// to the `yyyy-MM-dd HH:mm:ss.SSS` form the receiver expects.
+/// to the `yyyy-MM-dd HH:mm:ss.SSS` form the receiver expects. The time zone
+/// offset is dropped, and fractional seconds — including their absence — are
+/// truncated or padded to exactly three digits.
 const TIME_PATTERN: &str =
-    r#""((\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d{3}))\d*)(Z|[+\-]\d{2}:\d{2})""#;
+    r#""((\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+\-]\d{2}:\d{2}))""#;
 
 fn time_regex() -> &'static Regex {
     static TIME_RE: OnceLock<Regex> = OnceLock::new();
@@ -71,25 +73,34 @@ pub fn is_valid_key(key: &str) -> bool {
 /// Rewrite RFC 3339 timestamps inside a serialized JSON payload to
 /// `"yyyy-MM-dd HH:mm:ss.SSS"`, mirroring the Go SDK's `parseTime`.
 ///
+/// Timestamps without fractional seconds are padded to `.000`, fractional
+/// digits beyond three are truncated, and the time zone offset is dropped.
+///
 /// ```
 /// use thinkingdata_core::utils::parse_time;
 ///
 /// let payload = r##"{"#time":"2024-01-02T03:04:05.123456+08:00"}"##;
 /// assert!(parse_time(payload).contains(r#""2024-01-02 03:04:05.123""#));
+///
+/// let no_fraction = r##"{"#time":"2024-01-02T03:04:05Z"}"##;
+/// assert!(parse_time(no_fraction).contains(r#""2024-01-02 03:04:05.000""#));
 /// ```
 pub fn parse_time(payload: &str) -> String {
-    let re = time_regex();
-    if !re.is_match(payload) {
-        return payload.to_string();
-    }
-    let mut current = payload.to_string();
-    loop {
-        let next = re.replace_all(&current, "\"$2 $3.$4\"").into_owned();
-        if next == current {
-            return next;
-        }
-        current = next;
-    }
+    time_regex()
+        .replace_all(payload, |caps: &regex::Captures| {
+            let millis = match caps.get(4) {
+                Some(fraction) => {
+                    let mut digits: String = fraction.as_str().chars().take(3).collect();
+                    while digits.len() < 3 {
+                        digits.push('0');
+                    }
+                    digits
+                }
+                None => "000".to_string(),
+            };
+            format!("\"{} {}.{millis}\"", &caps[2], &caps[3])
+        })
+        .into_owned()
 }
 
 /// Current local time formatted as `yyyy-MM-dd HH:mm:ss.SSS`.
@@ -257,9 +268,30 @@ mod tests {
         let output = parse_time(input);
         assert!(output.contains(r#""2024-01-02 03:04:05.123""#), "{output}");
 
-        // No fractional seconds: the pattern requires `.ddd`, so it is left alone.
+        // No fractional seconds: padded to `.000` so the receiver format holds.
         let no_millis = r##"{"#time":"2024-01-02T03:04:05Z"}"##;
-        assert_eq!(parse_time(no_millis), no_millis);
+        assert!(
+            parse_time(no_millis).contains(r#""2024-01-02 03:04:05.000""#),
+            "{no_millis}"
+        );
+
+        // Sub-100ms fractions are padded to three digits.
+        let short_fraction = r##"{"#time":"2024-01-02T03:04:05.1Z"}"##;
+        assert!(
+            parse_time(short_fraction).contains(r#""2024-01-02 03:04:05.100""#),
+            "{short_fraction}"
+        );
+
+        // Long fractions are truncated to three digits.
+        let long_fraction = r##"{"#time":"2024-01-02T03:04:05.999999999999+08:00"}"##;
+        assert!(
+            parse_time(long_fraction).contains(r#""2024-01-02 03:04:05.999""#),
+            "{long_fraction}"
+        );
+
+        // Without a time zone offset this is not RFC 3339: left alone.
+        let no_offset = r#""2024-01-02T03:04:05""#;
+        assert_eq!(parse_time(no_offset), no_offset);
 
         // Plain payloads pass through untouched.
         assert_eq!(parse_time("hello"), "hello");
