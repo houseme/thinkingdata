@@ -24,11 +24,11 @@
 //! # Choosing an API style
 //!
 //! ```no_run
-//! # use thinkingdata_core::consumer::{BatchConsumer, Consumer};
-//!
 //! # // Blocking (feature `blocking`): returns immediately after the request.
 //! # #[cfg(feature = "blocking")]
 //! # fn demo() -> Result<(), thinkingdata_core::TDError> {
+//! # use thinkingdata_core::consumer::{BatchConsumer, Consumer};
+//!
 //! # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
 //! # consumer.flush()?;
 //! # consumer.close()?;
@@ -38,7 +38,7 @@
 //! # // Async (feature `async`): awaits the delivery result.
 //! # #[cfg(feature = "async")]
 //! # async fn demo_async() -> Result<(), thinkingdata_core::TDError> {
-//! # use thinkingdata_core::consumer::AsyncConsumer;
+//! # use thinkingdata_core::consumer::{AsyncConsumer, BatchConsumer};
 //!
 //! # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "app_id")?;
 //! # consumer.flush_async().await?;
@@ -58,12 +58,15 @@ pub use batch_consumer::{
 pub use debug_consumer::DebugConsumer;
 pub use log_consumer::{LogConsumer, LogConsumerConfig, RotateMode};
 
+// The traits are feature-gated, so their imports must be too; the shared
+// runtime is not — every consumer spawns its pipeline regardless of features.
+#[cfg(any(feature = "blocking", feature = "async"))]
 use crate::data::Data;
+#[cfg(any(feature = "blocking", feature = "async"))]
 use crate::error::Result;
-#[cfg(feature = "blocking")]
+#[cfg(any(feature = "blocking", feature = "async"))]
 use std::sync::Arc;
 use std::sync::OnceLock;
-#[cfg(feature = "blocking")]
 use tokio::runtime::Runtime;
 
 /// Synchronous delivery interface implemented by all consumers.

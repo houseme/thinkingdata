@@ -100,11 +100,16 @@ pub(crate) fn format_now() -> String {
 }
 
 /// Current local time formatted with an arbitrary jiff `strftime` pattern.
+///
+/// Only the (feature-gated) log consumer rotates by period, so this helper
+/// follows the same feature gate.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn format_with(pattern: &str) -> String {
     jiff::ZonedDateTime::now().strftime(pattern).to_string()
 }
 
 /// Generate a random (v4) UUID string for the `#uuid` field.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn generate_uuid() -> String {
     uuid::Uuid::new_v4().to_string()
 }

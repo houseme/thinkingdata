@@ -128,14 +128,15 @@ struct Inner {
 /// subsequent flushes.
 ///
 /// ```no_run
-/// # use thinkingdata_core::consumer::{BatchConsumer, Consumer};
-///
-/// # #[cfg(feature = "blocking")]
 /// # fn main() -> Result<(), thinkingdata_core::TDError> {
+/// # #[cfg(feature = "blocking")]
+/// # {
+/// # use thinkingdata_core::consumer::{BatchConsumer, Consumer};
 /// # let consumer = BatchConsumer::new("https://receiver.thinkingdata.io", "your_app_id")?;
 /// # let data = thinkingdata_core::Data::new(thinkingdata_core::DataType::Track);
 /// # consumer.add(&data)?;
 /// # consumer.close()?;
+/// # }
 /// # Ok(())
 /// # }
 /// ```

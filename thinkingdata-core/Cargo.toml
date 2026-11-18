@@ -26,14 +26,14 @@ description = "Core implementation of the ThinkingData Analytics Rust SDK: data 
 [features]
 default = ["blocking"]
 # Synchronous API (`Consumer` trait, `TDAnalytics`, blocking consumer methods).
-blocking = []
+blocking = ["dep:flate2", "dep:uuid"]
 # Asynchronous API (`AsyncConsumer` trait, `TDAnalyticsAsync`, `*_async`
 # consumer methods) with streaming pipelines built on Tokio.
-async = ["dep:async-trait"]
+async = ["dep:async-trait", "dep:flate2", "dep:uuid"]
 
 [dependencies]
 async-trait = { workspace = true, optional = true }
-flate2 = { workspace = true }
+flate2 = { workspace = true, optional = true }
 jiff = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
@@ -42,7 +42,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, optional = true }
 
 [dev-dependencies]
 flate2 = { workspace = true }
@@ -52,3 +52,15 @@ tokio = { workspace = true, features = ["test-util"] }
 [[example]]
 name = "async_track"
 required-features = ["async"]
+
+[[example]]
+name = "batch_upload"
+required-features = ["blocking"]
+
+[[example]]
+name = "debug_validate"
+required-features = ["blocking"]
+
+[[example]]
+name = "log_basic"
+required-features = ["blocking"]

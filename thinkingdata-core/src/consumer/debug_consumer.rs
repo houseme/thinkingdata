@@ -51,15 +51,16 @@ struct DebugResponse {
 /// but archives nothing — handy during development.
 ///
 /// ```no_run
-/// # use thinkingdata_core::consumer::{Consumer, DebugConsumer};
-///
-/// # #[cfg(feature = "blocking")]
 /// # fn main() -> Result<(), thinkingdata_core::TDError> {
+/// # #[cfg(feature = "blocking")]
+/// # {
+/// # use thinkingdata_core::consumer::{Consumer, DebugConsumer};
 /// # // dry run: validate only, do not archive
 /// # let consumer = DebugConsumer::new("https://receiver.thinkingdata.io", "your_app_id", false)?;
 /// # let data = thinkingdata_core::Data::new(thinkingdata_core::DataType::Track);
 /// # consumer.add(&data)?;
 /// # consumer.close()?;
+/// # }
 /// # Ok(())
 /// # }
 /// ```

@@ -74,7 +74,13 @@
 //! # }
 //! ```
 
+// The analytics and consumer modules are empty without one of the API
+// features (every facade and consumer trait is feature-gated), so both are
+// compiled out entirely — no-default-features keeps the data model,
+// validation and diagnostics logging only.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub mod analytics;
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub mod consumer;
 pub mod data;
 pub mod error;

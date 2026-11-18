@@ -22,11 +22,11 @@
 //! `add_async`).
 //!
 //! ```
-//! # #[cfg(feature = "blocking")]
 //! # fn main() -> Result<(), thinkingdata_core::TDError> {
+//! # #[cfg(feature = "blocking")]
+//! # {
 //! # use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
 //!
-//! # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-analytics");
 //! # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-analytics");
 //! # let consumer = LogConsumer::new(dir.to_str().unwrap())?;
 //! # let ta = TDAnalytics::new(consumer)?;

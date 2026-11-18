@@ -154,6 +154,11 @@ pub(crate) fn td_log_debug(message: &str) {
     td_log(TDLogLevel::Debug, message);
 }
 
+// `debug`/`warning` are part of the internal log API; exercised by tests and
+// kept for parity with the Go SDK's tdLogDebug/tdLogWarning helpers. The
+// `info`/`error` helpers are wired into the (feature-gated) consumers, and
+// `error` is additionally exercised by this module's own tests.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn td_log_info(message: &str) {
     td_log(TDLogLevel::Info, message);
 }
@@ -163,6 +168,7 @@ pub(crate) fn td_log_warning(message: &str) {
     td_log(TDLogLevel::Warning, message);
 }
 
+#[cfg(any(feature = "blocking", feature = "async", test))]
 pub(crate) fn td_log_error(message: &str) {
     td_log(TDLogLevel::Error, message);
 }

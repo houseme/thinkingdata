@@ -20,14 +20,18 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::error::{Result, TDError};
+#[cfg(any(feature = "blocking", feature = "async"))]
 use crate::log::td_log_error;
-use crate::utils::{format_now, generate_uuid, is_valid_key};
+use crate::utils::format_now;
+#[cfg(any(feature = "blocking", feature = "async"))]
+use crate::utils::{generate_uuid, is_valid_key};
 
 /// The name of the SDK that produced the data, reported as `#lib`.
 pub const LIB_NAME: &str = "Rust";
 
 /// Property keys that are hoisted out of `properties` into dedicated top-level
 /// fields of the wire format.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) const PRESET_KEYS: [&str; 7] = [
     "#ip",
     "#app_id",
@@ -175,11 +179,11 @@ impl Serialize for DataType {
 /// including `serde_json::json!({...})` literals, which must be JSON objects:
 ///
 /// ```
+/// # fn main() -> Result<(), thinkingdata_core::TDError> {
+/// # #[cfg(feature = "blocking")]
+/// # {
 /// # use std::collections::HashMap;
 /// # use thinkingdata_core::{TDAnalytics, consumer::LogConsumer};
-///
-/// # #[cfg(feature = "blocking")]
-/// # fn main() -> Result<(), thinkingdata_core::TDError> {
 /// # let dir = std::env::temp_dir().join("thinkingdata-core-doctest-props");
 /// # let consumer = LogConsumer::new(dir.to_str().unwrap())?;
 /// # let ta = TDAnalytics::new(consumer)?;
@@ -194,6 +198,7 @@ impl Serialize for DataType {
 /// # ta.user_set("account_id_123", serde_json::json!({ "level": 10 }))?;
 ///
 /// # ta.close()?;
+/// # }
 /// # Ok(())
 /// # }
 /// ```
@@ -284,6 +289,7 @@ pub struct Data {
     pub properties: Map<String, Value>,
     /// True when `properties` contains nested (non-scalar) values; used by the
     /// debug consumer to decide whether timestamps need rewriting.
+    #[cfg(any(feature = "blocking", feature = "async"))]
     #[serde(skip)]
     pub(crate) is_complex: bool,
 }
@@ -306,6 +312,7 @@ impl Data {
             transaction_property: String::new(),
             import_tool_id: String::new(),
             properties: Map::new(),
+            #[cfg(any(feature = "blocking", feature = "async"))]
             is_complex: false,
         }
     }
@@ -350,6 +357,7 @@ impl Data {
 /// Remove `key` from `properties` and return it when it is a string.
 ///
 /// Non-string values are dropped with an error log, matching the Go SDK.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn extract_string_property(properties: &mut Map<String, Value>, key: &str) -> String {
     match properties.remove(key) {
         Some(Value::String(value)) => value,
@@ -365,6 +373,7 @@ pub(crate) fn extract_string_property(properties: &mut Map<String, Value>, key: 
 ///
 /// Strings are passed through unchanged; an empty string or any other type
 /// falls back to the current local time.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn extract_time(properties: &mut Map<String, Value>) -> String {
     match properties.remove("#time") {
         Some(Value::String(value)) if !value.is_empty() => value,
@@ -379,6 +388,7 @@ pub(crate) fn extract_time(properties: &mut Map<String, Value>) -> String {
 /// When `stringent` is set (debug consumer), property keys must also match the
 /// key pattern and the documented v5.0 value limits are enforced; otherwise
 /// invalid keys are passed through, mirroring the Go SDK's lenient consumers.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn format_properties(data: &mut Data, stringent: bool) -> Result<()> {
     if !data.event_name.is_empty() && !is_valid_key(&data.event_name) {
         let message = format!("invalid event name: {}", data.event_name);
@@ -415,6 +425,7 @@ pub(crate) fn format_properties(data: &mut Data, stringent: bool) -> Result<()> 
 
 /// Fill the preset fields of `data` from `properties`, removing the preset
 /// keys from the property map, and generate a `#uuid` when none was supplied.
+#[cfg(any(feature = "blocking", feature = "async"))]
 pub(crate) fn apply_preset_properties(data: &mut Data, properties: &mut Map<String, Value>) {
     // `PRESET_KEYS` documents the hoisted header fields; extraction is
     // key-specific below.
@@ -436,7 +447,7 @@ pub(crate) fn apply_preset_properties(data: &mut Data, properties: &mut Map<Stri
 mod tests {
     use super::*;
 
-    fn sample_properties() -> Map<String, Value> {
+    pub(super) fn sample_properties() -> Map<String, Value> {
         let mut props = Map::new();
         props.insert("string".to_string(), Value::String("v".to_string()));
         props.insert("number".to_string(), Value::from(1));
@@ -474,6 +485,72 @@ mod tests {
         assert_eq!(obj["#type"], "user_del");
         assert!(obj["properties"].as_object().unwrap().is_empty());
     }
+
+    #[test]
+    fn data_type_wire_values() {
+        assert_eq!(DataType::Track.as_str(), "track");
+        assert_eq!(DataType::UserSetOnce.as_str(), "user_setOnce");
+        assert_eq!(DataType::UserUniqAppend.as_str(), "user_uniq_append");
+        assert!(DataType::TrackUpdate.is_track());
+        assert!(!DataType::UserSet.is_track());
+    }
+
+    #[test]
+    fn preset_property_catalog_matches_the_documented_list() {
+        assert_eq!(PRESET_PROPERTIES.len(), 48);
+        assert!(is_preset_property("#lib"));
+        assert!(is_preset_property("#utm"));
+        assert!(is_preset_property("#country_code"));
+        assert!(!is_preset_property("#not_a_preset"));
+        assert!(!is_preset_property("custom_property"));
+    }
+
+    #[test]
+    fn check_limits_accepts_a_well_formed_snapshot() {
+        let mut data = Data::new(DataType::Track);
+        data.account_id = "acc".to_string();
+        data.event_name = "purchase".to_string();
+        data.properties = sample_properties();
+        assert!(data.check_limits().is_ok());
+    }
+
+    #[test]
+    fn check_limits_rejects_malformed_time() {
+        let mut data = Data::new(DataType::Track);
+        data.time = "2024-01-02T03:04:05Z".to_string();
+        let err = data.check_limits().unwrap_err();
+        assert!(err.to_string().contains("#time"), "{err}");
+    }
+
+    #[test]
+    fn check_limits_rejects_oversized_ids() {
+        let mut data = Data::new(DataType::Track);
+        data.account_id = "a".repeat(129);
+        let err = data.check_limits().unwrap_err();
+        assert!(err.to_string().contains("#account_id"), "{err}");
+
+        let mut data = Data::new(DataType::Track);
+        data.distinct_id = "d".repeat(129);
+        let err = data.check_limits().unwrap_err();
+        assert!(err.to_string().contains("#distinct_id"), "{err}");
+    }
+
+    #[test]
+    fn check_limits_rejects_values_over_documented_limits() {
+        let mut data = Data::new(DataType::Track);
+        data.properties
+            .insert("big".to_string(), Value::String("x".repeat(2 * 1024 + 1)));
+        let err = data.check_limits().unwrap_err();
+        assert!(err.to_string().contains("big"), "{err}");
+    }
+}
+
+// Wire-assembly helpers (`apply_preset_properties`, `format_properties`, …)
+// exist only with an API feature, so their tests live behind the same gate.
+#[cfg(all(test, any(feature = "blocking", feature = "async")))]
+mod wire_tests {
+    use super::tests::sample_properties;
+    use super::*;
 
     #[test]
     fn preset_keys_are_hoisted_into_fields() {
@@ -577,64 +654,6 @@ mod tests {
         props.insert("#time".to_string(), Value::from(123));
         let time = extract_time(&mut props);
         assert_eq!(time.len(), 23);
-    }
-
-    #[test]
-    fn data_type_wire_values() {
-        assert_eq!(DataType::Track.as_str(), "track");
-        assert_eq!(DataType::UserSetOnce.as_str(), "user_setOnce");
-        assert_eq!(DataType::UserUniqAppend.as_str(), "user_uniq_append");
-        assert!(DataType::TrackUpdate.is_track());
-        assert!(!DataType::UserSet.is_track());
-    }
-
-    #[test]
-    fn preset_property_catalog_matches_the_documented_list() {
-        assert_eq!(PRESET_PROPERTIES.len(), 48);
-        assert!(is_preset_property("#lib"));
-        assert!(is_preset_property("#utm"));
-        assert!(is_preset_property("#country_code"));
-        assert!(!is_preset_property("#not_a_preset"));
-        assert!(!is_preset_property("custom_property"));
-    }
-
-    #[test]
-    fn check_limits_accepts_a_well_formed_snapshot() {
-        let mut data = Data::new(DataType::Track);
-        data.account_id = "acc".to_string();
-        data.event_name = "purchase".to_string();
-        data.properties = sample_properties();
-        assert!(data.check_limits().is_ok());
-    }
-
-    #[test]
-    fn check_limits_rejects_malformed_time() {
-        let mut data = Data::new(DataType::Track);
-        data.time = "2024-01-02T03:04:05Z".to_string();
-        let err = data.check_limits().unwrap_err();
-        assert!(err.to_string().contains("#time"), "{err}");
-    }
-
-    #[test]
-    fn check_limits_rejects_oversized_ids() {
-        let mut data = Data::new(DataType::Track);
-        data.account_id = "a".repeat(129);
-        let err = data.check_limits().unwrap_err();
-        assert!(err.to_string().contains("#account_id"), "{err}");
-
-        let mut data = Data::new(DataType::Track);
-        data.distinct_id = "d".repeat(129);
-        let err = data.check_limits().unwrap_err();
-        assert!(err.to_string().contains("#distinct_id"), "{err}");
-    }
-
-    #[test]
-    fn check_limits_rejects_values_over_documented_limits() {
-        let mut data = Data::new(DataType::Track);
-        data.properties
-            .insert("big".to_string(), Value::String("x".repeat(2 * 1024 + 1)));
-        let err = data.check_limits().unwrap_err();
-        assert!(err.to_string().contains("big"), "{err}");
     }
 
     #[test]
