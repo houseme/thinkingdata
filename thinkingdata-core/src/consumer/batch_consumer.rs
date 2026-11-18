@@ -440,8 +440,18 @@ async fn upload_batch(inner: &Arc<Inner>, batch: &[Vec<u8>]) -> (bool, Option<TD
     payload.push(b']');
     let params = parse_time(&String::from_utf8_lossy(&payload));
 
+    // Encode the request body once; every retry attempt reuses the same bytes.
+    let body = if inner.compress {
+        match gzip_encode(params.as_bytes()) {
+            Ok(encoded) => encoded,
+            Err(err) => return (false, Some(err)),
+        }
+    } else {
+        params.clone().into_bytes()
+    };
+
     for attempt in 0..3 {
-        let (status, code, err) = send_once(inner, &params, batch.len()).await;
+        let (status, code, err) = send_once(inner, &body, batch.len()).await;
         if status == 200 {
             if let Some(err) = err {
                 return (true, Some(err));
@@ -465,7 +475,7 @@ async fn upload_batch(inner: &Arc<Inner>, batch: &[Vec<u8>]) -> (bool, Option<TD
             return (
                 false,
                 Some(TDError::msg(format!(
-                    "network error, but err is nil. Status code is: {status}"
+                    "upload failed after 3 attempts. Status code is: {status}"
                 ))),
             );
         }
@@ -482,18 +492,9 @@ struct BatchResponse {
 /// POST one request; returns `(status, code, error)`.
 async fn send_once(
     inner: &Arc<Inner>,
-    params: &str,
+    body: &[u8],
     size: usize,
 ) -> (u16, Option<i64>, Option<TDError>) {
-    let body = if inner.compress {
-        match gzip_encode(params.as_bytes()) {
-            Ok(encoded) => encoded,
-            Err(err) => return (0, None, Some(err)),
-        }
-    } else {
-        params.as_bytes().to_vec()
-    };
-
     let request = inner
         .client
         .post(&inner.server_url)
@@ -505,7 +506,7 @@ async fn send_once(
         .header("TA-Integration-Version", crate::SDK_VERSION)
         .header("TA-Integration-Count", size.to_string())
         .header("Content-Type", "application/json")
-        .body(body);
+        .body(body.to_vec());
 
     let response = match request.send().await {
         Ok(response) => response,

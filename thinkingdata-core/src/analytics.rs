@@ -38,6 +38,7 @@
 //! # ta.user_set("account_id_123", serde_json::json!({ "vip": true }))?;
 //!
 //! # ta.close()?;
+//! # }
 //! # Ok(())
 //! # }
 //! ```
@@ -128,14 +129,17 @@ fn validate_event(data_type: DataType, event_name: &str, event_id: &str) -> Resu
 /// Compose the property map of a track event, in the Go SDK's precedence
 /// order: super properties < dynamic super properties < preset `#lib` fields
 /// < custom properties.
+///
+/// Takes every map by value so the per-event snapshots handed in by the
+/// facades are consumed without re-cloning each entry.
 fn compose_track_properties(
-    super_properties: &Map<String, Value>,
-    dynamic: &Map<String, Value>,
+    super_properties: Map<String, Value>,
+    dynamic: Map<String, Value>,
     custom: Map<String, Value>,
 ) -> Map<String, Value> {
-    let mut properties = super_properties.clone();
+    let mut properties = super_properties;
     for (key, value) in dynamic {
-        properties.insert(key.clone(), value.clone());
+        properties.insert(key, value);
     }
     properties.insert("#lib".to_string(), Value::String(LIB_NAME.to_string()));
     properties.insert(
@@ -406,8 +410,8 @@ impl TDAnalytics {
         validate_event(data_type, event_name, event_id)?;
         let custom = properties.into_property_map()?;
         let properties = compose_track_properties(
-            &self.super_properties.get(),
-            &self.super_properties.get_dynamic(),
+            self.super_properties.get(),
+            self.super_properties.get_dynamic(),
             custom,
         );
         let data = build_data(
@@ -878,8 +882,8 @@ impl TDAnalyticsAsync {
         validate_event(data_type, event_name, event_id)?;
         let custom = properties.into_property_map()?;
         let properties = compose_track_properties(
-            &self.super_properties.get(),
-            &self.super_properties.get_dynamic(),
+            self.super_properties.get(),
+            self.super_properties.get_dynamic(),
             custom,
         );
         let data = build_data(

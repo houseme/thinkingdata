@@ -319,7 +319,7 @@ async fn writer_loop(shared: Arc<WriterShared>, mut rx: mpsc::UnboundedReceiver<
     while let Some(command) = rx.recv().await {
         match command {
             LogCommand::Write { line, ack } => {
-                let result = write_event(&shared, &line).await;
+                let result = write_event(&shared, line).await;
                 let _ = ack.send(result);
             }
             LogCommand::Flush { ack } => {
@@ -337,9 +337,10 @@ async fn writer_loop(shared: Arc<WriterShared>, mut rx: mpsc::UnboundedReceiver<
 }
 
 /// Append one line, rotating the file when the period changed or the size
-/// limit was exceeded. Blocking file operations run on the blocking pool.
-async fn write_event(shared: &Arc<WriterShared>, line: &str) -> Result<()> {
-    let line = line.to_string();
+/// limit was exceeded. Blocking file operations run on the blocking pool; the
+/// line is moved into the task so the (potentially large) payload is written
+/// without an extra copy.
+async fn write_event(shared: &Arc<WriterShared>, line: String) -> Result<()> {
     let task = shared.clone();
     tokio::task::spawn_blocking(move || {
         let mut state = task.state.lock().expect("ThinkingData log state poisoned");
