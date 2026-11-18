@@ -167,11 +167,11 @@ thinkingdata --server-url https://receiver.thinkingdata.io --app-id YOUR_APP_ID 
 thinkingdata --log-dir /tmp/ta-logs user-set --account-id acc_1 -p '{"level": 10}'
 thinkingdata --log-dir /tmp/ta-logs user-unset --account-id acc_1 --keys level,vip
 thinkingdata --log-dir /tmp/ta-logs track-first --account-id acc_1 --event-name register --first-check-id acc_1
-thinkingdata --log-dir /tmp/ta-logs flush
 ```
 
 Commands: `track`, `track-first`, `track-update`, `track-overwrite`, `user-set`, `user-set-once`, `user-add`,
-`user-append`, `user-uniq-append`, `user-unset`, `user-del`, `flush`, `close`.
+`user-append`, `user-uniq-append`, `user-unset`, `user-del`. Every command flushes and closes the consumer before
+exiting, so buffered data is always delivered.
 
 ---
 

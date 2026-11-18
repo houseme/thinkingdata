@@ -103,10 +103,6 @@ pub enum Command {
     UserUnset(UserUnsetArgs),
     /// Delete a user; this operation cannot be undone.
     UserDel(UserDelArgs),
-    /// Deliver everything currently buffered.
-    Flush,
-    /// Flush and shut the consumer down.
-    Close,
 }
 
 /// Common identifier options shared by all reporting commands.
@@ -326,21 +322,16 @@ impl TimeBearingArgs for TrackUpdateArgs {
 
 /// Execute the parsed command against a freshly built analytics instance.
 ///
-/// Reporting commands flush and close the consumer before returning so that
+/// Every command flushes and closes the consumer before returning so that
 /// buffered data is always delivered.
 pub fn run(cli: Cli) -> Result<(), TDError> {
     let ta = build_analytics(&cli)?;
 
-    let requires_close = !matches!(cli.command, Command::Close | Command::Flush);
     match cli.command {
         Command::Track(args) => {
             let (account, distinct) = args.ids.resolve()?;
             let properties = track_properties(&args)?;
-            if account.is_empty() {
-                ta.track_with_distinct_id("", &distinct, &args.event_name, properties)
-            } else {
-                ta.track_with_distinct_id(&account, &distinct, &args.event_name, properties)
-            }
+            ta.track_with_distinct_id(&account, &distinct, &args.event_name, properties)
         }
         Command::TrackFirst(args) => {
             let (account, distinct) = args.ids.resolve()?;
@@ -392,27 +383,26 @@ pub fn run(cli: Cli) -> Result<(), TDError> {
         }),
         Command::UserUnset(args) => {
             let (account, distinct) = args.ids.resolve()?;
-            if args.keys.is_empty() {
+            // The comma delimiter keeps surrounding whitespace; empty items
+            // and padding would produce keys the receiver silently drops.
+            let keys: Vec<String> = args
+                .keys
+                .iter()
+                .map(|key| key.trim().to_string())
+                .filter(|key| !key.is_empty())
+                .collect();
+            if keys.is_empty() {
                 return Err(TDError::EmptyUnsetKeys);
             }
-            if account.is_empty() {
-                ta.user_unset_with_distinct_id("", &distinct, &args.keys)
-            } else {
-                ta.user_unset_with_distinct_id(&account, &distinct, &args.keys)
-            }
+            ta.user_unset_with_distinct_id(&account, &distinct, &keys)
         }
         Command::UserDel(args) => {
             let (account, distinct) = args.ids.resolve()?;
             ta.user_del_with_distinct_id(&account, &distinct)
         }
-        Command::Flush => ta.flush(),
-        Command::Close => ta.close(),
     }?;
 
-    if requires_close {
-        ta.close()?;
-    }
-    Ok(())
+    ta.close()
 }
 
 /// Run one user-property operation, resolving IDs and parsing properties.
@@ -445,22 +435,44 @@ mod tests {
                 "https://x",
                 "--app-id",
                 "a",
-                "flush"
+                "user-del",
+                "--account-id",
+                "a"
             ])
             .is_err()
         );
-        assert!(cli_with(&["--log-dir", "/tmp/a", "flush"]).is_ok());
+        assert!(cli_with(&["--log-dir", "/tmp/a", "user-del", "--account-id", "a"]).is_ok());
     }
 
     #[test]
     fn debug_requires_server_url_and_app_id() {
-        assert!(cli_with(&["--debug", "flush"]).is_err());
+        assert!(cli_with(&["--debug", "user-del", "--account-id", "a"]).is_err());
         // clap accepts these without --app-id; build_analytics rejects them.
-        let cli = cli_with(&["--server-url", "https://x", "flush"]).unwrap();
+        let cli =
+            cli_with(&["--server-url", "https://x", "user-del", "--account-id", "a"]).unwrap();
         assert!(build_analytics(&cli).is_err());
-        let cli = cli_with(&["--debug", "--server-url", "https://x", "flush"]).unwrap();
+        let cli = cli_with(&[
+            "--debug",
+            "--server-url",
+            "https://x",
+            "user-del",
+            "--account-id",
+            "a",
+        ])
+        .unwrap();
         assert!(build_analytics(&cli).is_err());
-        assert!(cli_with(&["--server-url", "https://x", "--app-id", "a", "flush"]).is_ok());
+        assert!(
+            cli_with(&[
+                "--server-url",
+                "https://x",
+                "--app-id",
+                "a",
+                "user-del",
+                "--account-id",
+                "a"
+            ])
+            .is_ok()
+        );
         assert!(
             cli_with(&[
                 "--debug",
@@ -468,7 +480,9 @@ mod tests {
                 "https://x",
                 "--app-id",
                 "a",
-                "flush"
+                "user-del",
+                "--account-id",
+                "a"
             ])
             .is_ok()
         );
@@ -492,7 +506,9 @@ mod tests {
     }
 
     #[test]
-    fn unset_keys_are_comma_separated() {
+    fn unset_keys_are_trimmed_after_splitting() {
+        // The parser splits on the comma; whitespace is trimmed so the keys
+        // the receiver sees match the documented key pattern.
         let args = UserUnsetArgs::try_parse_from([
             "user-unset",
             "--account-id",
@@ -501,6 +517,12 @@ mod tests {
             "k1,k2 , k3",
         ])
         .unwrap();
-        assert_eq!(args.keys, vec!["k1", "k2 ", " k3"]);
+        let keys: Vec<String> = args
+            .keys
+            .iter()
+            .map(|key| key.trim().to_string())
+            .filter(|key| !key.is_empty())
+            .collect();
+        assert_eq!(keys, vec!["k1", "k2", "k3"]);
     }
 }

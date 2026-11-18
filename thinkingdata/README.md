@@ -78,7 +78,8 @@ thinkingdata --server-url https://receiver.thinkingdata.io --app-id YOUR_APP_ID 
 ```
 
 Commands: `track`, `track-first`, `track-update`, `track-overwrite`, `user-set`, `user-set-once`,
-`user-add`, `user-append`, `user-uniq-append`, `user-unset`, `user-del`, `flush`, `close`.
+`user-add`, `user-append`, `user-uniq-append`, `user-unset`, `user-del`. Every command flushes and closes the
+consumer before exiting, so buffered data is always delivered.
 
 ## Documentation
 
