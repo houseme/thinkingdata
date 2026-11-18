@@ -92,6 +92,43 @@ jobs:
       - name: Test
         run: cargo test --locked ${{ matrix.flags }} --workspace
 
+  # ── Crate-level feature combinations ────────────────────────────────────────
+  #
+  # The workspace matrix above always compiles thinkingdata-core with its own
+  # default features (the facade does not set `default-features = false`), so
+  # it cannot catch breakage that only shows up when a downstream crate
+  # depends on thinkingdata-core directly. These jobs do.
+  features-core:
+    name: Core feature combos
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: core-features
+
+      - name: Check (no default features)
+        run: cargo check --locked -p thinkingdata-core --no-default-features
+
+      - name: Check (async only)
+        run: cargo check --locked -p thinkingdata-core --no-default-features --features async
+
+      - name: Test (no default features)
+        run: cargo test --locked -p thinkingdata-core --no-default-features
+
+      - name: Test (async only)
+        run: cargo test --locked -p thinkingdata-core --no-default-features --features async
+
+      - name: Check facade (no default features)
+        run: cargo check --locked -p thinkingdata --no-default-features
+
+      - name: Check facade (async only)
+        run: cargo check --locked -p thinkingdata --no-default-features --features async
+
   # ── Functional smoke: CLI end to end against the log consumer ────────────────
 
   smoke:
@@ -173,6 +210,14 @@ jobs:
 
       - name: Clippy (async only, all targets, -D warnings)
         run: cargo clippy --locked --workspace --all-targets --no-default-features --features thinkingdata-core/async,thinkingdata/async -- -D warnings
+
+      # Crate-level combinations, which the workspace-level flags above cannot
+      # reach (see the features-core job for the same reasoning).
+      - name: Clippy (core, no default features, all targets, -D warnings)
+        run: cargo clippy --locked -p thinkingdata-core --no-default-features --all-targets -- -D warnings
+
+      - name: Clippy (core, async only, all targets, -D warnings)
+        run: cargo clippy --locked -p thinkingdata-core --no-default-features --features async --all-targets -- -D warnings
 
   # ── Documentation ───────────────────────────────────────────────────────────
 
