@@ -273,6 +273,16 @@ fn parse_properties(raw: Option<&str>) -> Result<Map<String, Value>, TDError> {
     }
 }
 
+/// Normalize the comma-separated `--keys` values: the delimiter keeps
+/// surrounding whitespace, so trim each item and drop empty ones — otherwise
+/// the receiver would silently drop keys that do not match the key pattern.
+fn normalize_unset_keys(keys: &[String]) -> Vec<String> {
+    keys.iter()
+        .map(|key| key.trim().to_string())
+        .filter(|key| !key.is_empty())
+        .collect()
+}
+
 /// Merge an optional event time into the property map as `#time`.
 fn apply_event_time(properties: &mut Map<String, Value>, time: Option<&str>) {
     if let Some(time) = time {
@@ -383,14 +393,7 @@ pub fn run(cli: Cli) -> Result<(), TDError> {
         }),
         Command::UserUnset(args) => {
             let (account, distinct) = args.ids.resolve()?;
-            // The comma delimiter keeps surrounding whitespace; empty items
-            // and padding would produce keys the receiver silently drops.
-            let keys: Vec<String> = args
-                .keys
-                .iter()
-                .map(|key| key.trim().to_string())
-                .filter(|key| !key.is_empty())
-                .collect();
+            let keys = normalize_unset_keys(&args.keys);
             if keys.is_empty() {
                 return Err(TDError::EmptyUnsetKeys);
             }
@@ -517,12 +520,6 @@ mod tests {
             "k1,k2 , k3",
         ])
         .unwrap();
-        let keys: Vec<String> = args
-            .keys
-            .iter()
-            .map(|key| key.trim().to_string())
-            .filter(|key| !key.is_empty())
-            .collect();
-        assert_eq!(keys, vec!["k1", "k2", "k3"]);
+        assert_eq!(normalize_unset_keys(&args.keys), vec!["k1", "k2", "k3"]);
     }
 }
