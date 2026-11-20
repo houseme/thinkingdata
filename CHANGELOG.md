@@ -29,6 +29,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   workflow's license gate (it failed on every run since its introduction).
 - CLI: unset-key normalization (trim + drop empty items) is shared between
   `run` and the test that pins it.
+- Tests: the diagnostics-log unit tests no longer race on the process-wide
+  log state with concurrent tests — an exact-call assertion could fail when
+  another test emitted an error-level line, and that failure poisoned the
+  lock the sibling tests serialize on. Assertions now tolerate interleaved
+  lines and the lock is taken poison-tolerantly.
 
 ## [0.2.0] - 2026-11-19
 

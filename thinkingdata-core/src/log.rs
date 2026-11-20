@@ -176,12 +176,21 @@ pub(crate) fn td_log_error(message: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use std::sync::atomic::AtomicUsize;
+    use std::sync::{Mutex, MutexGuard, PoisonError};
 
     // The global log level and custom logger are process-wide; serialize every
-    // test that touches them so parallel execution cannot interfere.
+    // test that touches them so parallel execution cannot interfere. Tests of
+    // other modules still emit `td_log_error` lines on their own (e.g. via
+    // `extract_string_property`) while one of these tests has raised the
+    // level, so assertions tolerate interleaved entries, and the lock is
+    // taken poison-tolerantly: a failing sibling must not cascade into
+    // PoisonError failures here.
     static LOG_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn serial_lock() -> MutexGuard<'static, ()> {
+        LOG_TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 
     struct CountingLogger {
         lines: Mutex<Vec<String>>,
@@ -209,6 +218,8 @@ mod tests {
         }
     }
 
+    // Declared after the serial lock so the reverse drop order restores the
+    // global state *before* releasing the lock.
     struct Guard;
 
     impl Drop for Guard {
@@ -220,8 +231,8 @@ mod tests {
 
     #[test]
     fn respects_level_threshold() {
+        let _serial = serial_lock();
         let _guard = Guard;
-        let _serial = LOG_TEST_LOCK.lock().unwrap();
         let logger = CountingLogger::new(false);
         set_custom_logger(logger.clone());
         set_log_level(TDLogLevel::Warning);
@@ -230,24 +241,37 @@ mod tests {
         td_log_warning("shown");
 
         let lines = logger.lines.lock().unwrap();
-        assert_eq!(lines.len(), 1);
-        assert!(lines[0].contains("[Warning] shown"));
+        // The threshold semantics: the debug line is filtered, the warning
+        // line is delivered. Interleaved error-level lines from concurrent
+        // tests may also appear, so the exact length is not asserted.
+        assert!(
+            !lines.iter().any(|line| line.contains("hidden")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| line.contains("[Warning] shown")),
+            "{lines:?}"
+        );
     }
 
     #[test]
     fn contains_panic_from_custom_logger() {
+        let _serial = serial_lock();
         let _guard = Guard;
-        let _serial = LOG_TEST_LOCK.lock().unwrap();
         let logger = CountingLogger::new(true);
         set_custom_logger(logger.clone());
         set_log_level(TDLogLevel::Error);
         td_log_error("boom");
-        assert_eq!(logger.calls.load(Ordering::SeqCst), 1);
+        // Reaching this line proves containment: the panic raised in `print`
+        // was swallowed by `td_log`. The exact call count is racy —
+        // concurrent tests may legitimately emit error-level lines through
+        // the same global logger — so only "at least our own call" holds.
+        assert!(logger.calls.load(Ordering::SeqCst) >= 1);
     }
 
     #[test]
     fn default_level_is_off() {
-        let _serial = LOG_TEST_LOCK.lock().unwrap();
+        let _serial = serial_lock();
         assert_eq!(get_log_level(), TDLogLevel::Off);
     }
 }
