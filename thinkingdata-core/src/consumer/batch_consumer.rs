@@ -416,17 +416,20 @@ async fn flush_batches(inner: &Arc<Inner>, all: bool, closing: bool) -> Result<(
     for batch in retained.into_iter().rev() {
         queue.cache.push_front(batch);
     }
-    // Keep only the newest `cache_capacity` batches; say so when data is
-    // dropped, mirroring the Go SDK's discard logging.
-    if queue.cache.len() > inner.cache_capacity {
-        let dropped = queue.cache.len() - inner.cache_capacity;
+    // Keep only the newest `cache_capacity` batches. The discard is logged
+    // after the lock is released: custom logger callbacks must never run
+    // while an SDK lock is held.
+    let mut dropped = 0usize;
+    while queue.cache.len() > inner.cache_capacity {
+        queue.cache.pop_front();
+        dropped += 1;
+    }
+    drop(queue);
+    if dropped > 0 {
         td_log_error(&format!(
             "cache is full, discard {dropped} batch(es) and keep the newest {}",
             inner.cache_capacity
         ));
-        while queue.cache.len() > inner.cache_capacity {
-            queue.cache.pop_front();
-        }
     }
     first_err.map_or(Ok(()), Err)
 }
