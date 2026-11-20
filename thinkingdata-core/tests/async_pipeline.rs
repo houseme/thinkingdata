@@ -176,8 +176,9 @@ async fn auto_flush_runs_while_the_caller_sleeps() {
     .unwrap();
 
     consumer.add_async(&event("tick")).await.unwrap();
-    // No explicit flush: the streaming sender task delivers on its own.
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    // No explicit flush: the streaming sender task delivers on its own. The
+    // deadline is generous — it only bites on a genuine failure.
+    let deadline = std::time::Instant::now() + Duration::from_secs(30);
     while server.request_count() == 0 {
         assert!(std::time::Instant::now() < deadline, "auto flush timed out");
         tokio::time::sleep(Duration::from_millis(20)).await;

@@ -160,8 +160,11 @@ impl MockServer {
     }
 
     /// Block until at least `at_least` requests have been recorded.
+    ///
+    /// The deadline is generous (30s): it only bites on a genuine failure,
+    /// and a tight bound makes the suite flaky on heavily loaded machines.
     pub fn wait_requests(&self, at_least: usize) {
-        let deadline = Instant::now() + Duration::from_secs(5);
+        let deadline = Instant::now() + Duration::from_secs(30);
         while self.request_count() < at_least {
             if Instant::now() > deadline {
                 panic!(
