@@ -169,6 +169,32 @@ fn complex_payloads_rewrite_rfc3339_timestamps() {
 }
 
 #[test]
+fn scalar_payloads_rewrite_the_top_level_time() {
+    let server = MockServer::start();
+    let consumer = debug_consumer(&server, false);
+
+    // A raw `Data` snapshot (as the debug example builds one) whose `#time`
+    // header is RFC 3339 and whose properties are all scalars: the debug
+    // consumer still rewrites it, matching the log/batch consumers. Through
+    // the analytics facade this input is rejected up front by the stringent
+    // `#time` check, so only the direct-consumer path sees it.
+    let mut data = Data::new(DataType::Track);
+    data.account_id = "acc".to_string();
+    data.event_name = "debug_test".to_string();
+    data.time = "2024-01-02T03:04:05Z".to_string();
+    data.properties
+        .insert("price".to_string(), serde_json::json!(9.9));
+    consumer.add(&data).unwrap();
+    server.wait_requests(1);
+
+    let payload = server.requests()[0].form_field("data").unwrap();
+    assert!(
+        payload.contains(r##""#time":"2024-01-02 03:04:05.000""##),
+        "{payload}"
+    );
+}
+
+#[test]
 fn empty_server_url_is_rejected() {
     let err = DebugConsumer::new("", "app", true).unwrap_err();
     assert!(err.to_string().contains("ServerUrl"), "{err}");

@@ -125,13 +125,11 @@ impl DebugConsumer {
     /// Serialize and POST one event as a form request.
     async fn do_add(&self, data: &Data) -> Result<()> {
         let json = serde_json::to_string(data)?;
-        // Nested (complex) values may embed RFC 3339 timestamps that the
-        // receiver cannot read; rewrite them like the Go SDK does.
-        let json_str = if data.is_complex {
-            parse_time(&json)
-        } else {
-            json
-        };
+        // RFC 3339 timestamps anywhere in the payload — the hoisted `#time`
+        // header, a plain string property, or a nested value — are rewritten
+        // to the receiver format like the log/batch consumers do. The rewrite
+        // is a no-op for payloads already in that format.
+        let json_str = parse_time(&json);
         td_log_info(&json_str);
 
         let dry_run = if self.write_data { "0" } else { "1" };

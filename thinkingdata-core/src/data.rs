@@ -287,11 +287,6 @@ pub struct Data {
     pub import_tool_id: String,
     /// Custom event/user properties, always serialized.
     pub properties: Map<String, Value>,
-    /// True when `properties` contains nested (non-scalar) values; used by the
-    /// debug consumer to decide whether timestamps need rewriting.
-    #[cfg(any(feature = "blocking", feature = "async"))]
-    #[serde(skip)]
-    pub(crate) is_complex: bool,
 }
 
 impl Data {
@@ -312,8 +307,6 @@ impl Data {
             transaction_property: String::new(),
             import_tool_id: String::new(),
             properties: Map::new(),
-            #[cfg(any(feature = "blocking", feature = "async"))]
-            is_complex: false,
         }
     }
 
@@ -406,13 +399,6 @@ pub(crate) fn format_properties(data: &mut Data, stringent: bool) -> Result<()> 
         if data.data_type == DataType::UserAdd && !value.is_number() {
             crate::log::td_log_info("invalid property value: only numbers is supported by UserAdd");
             return Err(TDError::InvalidUserAddValue);
-        }
-
-        // Scalar values serialize as-is; anything else is "complex" and needs
-        // RFC 3339 timestamp rewriting in the debug consumer.
-        match value {
-            Value::Number(_) | Value::Bool(_) | Value::String(_) => {}
-            _ => data.is_complex = true,
         }
     }
 
@@ -636,16 +622,6 @@ mod wire_tests {
             format_properties(&mut data, false),
             Err(TDError::InvalidEventName(_))
         ));
-    }
-
-    #[test]
-    fn complex_values_are_flagged() {
-        let mut data = Data::new(DataType::Track);
-        data.event_name = "purchase".to_string();
-        data.properties
-            .insert("array".to_string(), serde_json::json!(["a", "b"]));
-        format_properties(&mut data, false).unwrap();
-        assert!(data.is_complex);
     }
 
     #[test]
