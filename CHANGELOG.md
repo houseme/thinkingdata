@@ -7,6 +7,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- The batch consumer logs failure-cache eviction after releasing the queue
+  mutex: custom logger callbacks now never run while an SDK lock is held (a
+  regression introduced with the eviction logging in 0.2.0).
+- The debug consumer rewrites RFC 3339 timestamps in every payload instead of
+  only payloads with nested values, matching the log/batch consumers — a raw
+  `Data` snapshot (or a scalar string property) carrying an RFC 3339 timestamp
+  was previously submitted in the raw RFC 3339 form the receiver rejects.
+  Through the analytics facade the stringent `#time` check already rejected
+  such values up front, unchanged.
+- The `Data::is_complex` internal flag, whose only consumer was the debug
+  consumer's conditional rewrite, was removed along with it.
+
+### Changed
+
+- CI: `deny.toml` pins the cargo-deny license allow-list, unbreaking the audit
+  workflow's license gate (it failed on every run since its introduction).
+- CLI: unset-key normalization (trim + drop empty items) is shared between
+  `run` and the test that pins it.
+
 ## [0.2.0] - 2026-11-19
 
 ### Fixed
