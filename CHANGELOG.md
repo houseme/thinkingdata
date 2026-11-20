@@ -7,6 +7,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-20
+
 ### Fixed
 
 - The batch consumer logs failure-cache eviction after releasing the queue
